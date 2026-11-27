@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     var demoBusca = ""
     var demoAjustes = false
     var demoTexto = ""
+    var conectadoDemo = false
 
     private val pedirPacote = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val extras = r.data?.extras?.keySet()?.joinToString { k -> "$k=${r.data?.extras?.get(k)}" } ?: "-"
@@ -94,7 +95,7 @@ class MainActivity : ComponentActivity() {
             sync.manual = false
             pedirTranscricao()
         }
-        conectado.value = Prefs.conectado(this)
+        conectado.value = Prefs.conectado(this) || conectadoDemo
         lixeira.intValue = Store.naLixeira(this)
         total.intValue = Store.figs(this).size
         recentes.value = Prefs.recentes(this)
@@ -115,7 +116,11 @@ class MainActivity : ComponentActivity() {
             "esperando" -> { sync.manual = true; sync.estado.value = Sync.Estado.Sincronizando; sync.esperandoFavoritar.value = true; sync.mensagem.value = "Esperando suas favoritas chegarem…" }
             "fim" -> resultadoSync.value = "3 novas, 1 removida." to false
         }
-        if (intent.getBooleanExtra("demo_som", false)) Store.figs(this).firstOrNull { it.animada }?.let { escolhaSom.value = Triple("", listOf(it), it) }
+        if (intent.getBooleanExtra("demo_som", false)) Store.figs(this).firstOrNull { it.animada }?.let {
+            conectadoDemo = true
+            sync.listaConversas.value = listOf("Gi ❤️", "Família", "Trabalho - equipe")
+            escolhaSom.value = Triple("", listOf(it), it)
+        }
         setContent { App(this) }
         if (intent.getStringExtra("demo_tela") == null) io.execute { Updater.buscarNova(this)?.let { nova.value = it } }
         // carrega os vetores de ia em segundo plano pra primeira busca nao travar
@@ -136,7 +141,7 @@ class MainActivity : ComponentActivity() {
         total.intValue = Store.figs(this).size
         sugestoes.value = Store.INTENCOES.keys.toList()
         semResultado.value = Prefs.semResultado(this)
-        conectado.value = Prefs.conectado(this)
+        conectado.value = Prefs.conectado(this) || conectadoDemo
         lixeira.intValue = Store.naLixeira(this)
         val porArquivo = Store.figs(this).associateBy { it.arquivo }
         maisUsadas.value = Prefs.maisUsadas(this).mapNotNull { porArquivo[it] }.take(12)
@@ -192,7 +197,7 @@ class MainActivity : ComponentActivity() {
             val res = if (primeira == null) base else listOf(primeira) + base.filter { it.n != primeira.n }
             if (res.isEmpty()) { runOnUiThread { enviando.value = false; enviandoFig.value = null; aviso.value = "Nada encontrado com \"$q\"." }; return@execute }
             if (enviandoFig.value == null) runOnUiThread { enviandoFig.value = res.first() }
-            val mudou = Store.preencherPacotes(this, res)
+            val mudou = Store.preencherPacotes(this, res, so = res.first().animada)
             runOnUiThread {
                 fila.clear(); fila += mudou
                 voltarDepois = true
@@ -232,6 +237,17 @@ class MainActivity : ComponentActivity() {
     }
 
     fun abrirWhatsApp() = voltarProWhatsApp()
+
+    fun mandarComSom(f: Fig, alvo: String) {
+        escolhaSom.value = null
+        enviandoFig.value = f
+        enviando.value = true
+        sync.enviarComSom(f, alvo) { ok, msg ->
+            enviando.value = false; enviandoFig.value = null
+            if (ok) { Prefs.registrarUso(this, f.arquivo); voltarProWhatsApp() }
+            else aviso.value = msg
+        }
+    }
     // abre o whatsapp sem fechar o app, pra sincronizacao continuar rodando
     fun espiarWhatsApp() { packageManager.getLaunchIntentForPackage("com.whatsapp")?.let { startActivity(it) } }
 

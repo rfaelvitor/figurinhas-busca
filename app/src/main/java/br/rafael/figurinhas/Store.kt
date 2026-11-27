@@ -257,7 +257,8 @@ object Store {
 
     // coloca os resultados nos dois pacotes e troca a versao pro whatsapp recarregar
     // devolve quais pacotes mudaram
-    fun preencherPacotes(ctx: Context, resultado: List<Fig>): List<String> {
+    // so: quando a pessoa tocou numa figurinha, mexe so no pacote do tipo dela (o whatsapp demora pra recarregar cada um)
+    fun preencherPacotes(ctx: Context, resultado: List<Fig>, so: Boolean? = null): List<String> {
         val todas = figs(ctx)
         fun montar(anim: Boolean): List<String> {
             val r = resultado.filter { it.animada == anim }.take(MAX).map { it.arquivo }.toMutableList()
@@ -270,8 +271,8 @@ object Store {
         val o = JSONObject()
         val mudou = mutableListOf<String>()
         for ((pack, anim) in listOf(PACK_EST to false, PACK_ANIM to true)) {
-            val novo = montar(anim)
             val velho = arquivosDoPacote(ctx, pack)
+            val novo = if (so != null && so != anim && velho.isNotEmpty()) velho else montar(anim)
             // so troca a versao do pacote que mudou
             if (novo != velho) mudou += pack
             val v = antigo.optInt("v_$pack", 0) + if (novo != velho) 1 else 0
@@ -288,7 +289,7 @@ object Store {
     private val fmt = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
     @Synchronized fun log(ctx: Context, msg: String) {
         val f = File(ctx.filesDir, "diag.log")
-        val linhas = (if (f.exists()) f.readLines() else emptyList()).takeLast(150) + "${fmt.format(java.util.Date())} $msg"
+        val linhas = (if (f.exists()) f.readLines() else emptyList()).takeLast(700) + "${fmt.format(java.util.Date())} $msg"
         f.writeText(linhas.joinToString("\n"))
     }
     fun lerLog(ctx: Context): String {

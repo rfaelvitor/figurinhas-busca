@@ -59,7 +59,7 @@ class StickerProvider : ContentProvider() {
         if (seg.size != 3 || seg[0] != "stickers_asset") return null
         val ctx = context!!
         val nome = seg[2]
-        Store.log(ctx, "arquivo ${seg[1]}/$nome")
+        // cada arquivo lido pelo whatsapp enchia o diagnostico e empurrava o resto pra fora
         val arq = if (nome.startsWith("tray_")) File(ctx.filesDir, nome) else File(Store.dir(ctx), nome)
         if (!arq.exists() || arq.parentFile?.canonicalPath !in listOf(ctx.filesDir.canonicalPath, Store.dir(ctx).canonicalPath)) return null
         val pfd = ParcelFileDescriptor.open(arq, ParcelFileDescriptor.MODE_READ_ONLY)

@@ -17,10 +17,11 @@ import java.io.File
 import java.util.concurrent.Executors
 
 // sincroniza as favoritas: o whatsapp web roda escondido dentro do app (como mais um aparelho conectado)
-// e o app copia as figurinhas da aba Favoritas. so le, nunca manda nada.
+// e o app copia as figurinhas da aba Favoritas. So manda alguma coisa quando a pessoa pede pra mandar
+// uma figurinha com som: ai ele abre a conversa escolhida e toca na figurinha, como no computador.
 class Sync(private val a: Activity) {
 
-    enum class Estado { Parado, Conectando, Conectado, Sincronizando, Processando, Pronto, Desconectado, Erro }
+    enum class Estado { Parado, Conectando, Conectado, Sincronizando, Processando, Pronto, Desconectado, Erro, Preparando, Enviando }
 
     val estado = mutableStateOf(Estado.Parado)
     val feitas = mutableIntStateOf(0)
@@ -83,10 +84,82 @@ class Sync(private val a: Activity) {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     if (modo == "conectar") view.evaluateJavascript(JS_ESPERA_LOGIN, null)
-                    if (modo == "sincronizar") { modo = "rodando"; view.evaluateJavascript(JS_COLETA, null) }
+                    if (modo == "sincronizar") { modo = "rodando"; view.evaluateJavascript(JS_COLETA.replace("@GANCHO@", JS_GANCHO), null) }
+                    if (modo == "preparar" && url.startsWith("https://web.whatsapp.com")) view.evaluateJavascript(JS_PRONTO.replace("@GANCHO@", JS_GANCHO), null)
+                    if (modo == "direto") {
+                        modo = "enviando"
+                        view.evaluateJavascript(JS_ENVIAR.replace("@GANCHO@", JS_GANCHO).replace("@ALVO@", "'@direto'").replace("@ID@", org.json.JSONObject.quote(idEnvio)), null)
+                    }
                 }
             }
         }
+
+    // ---------- mandar figurinha com som pelo whatsapp web ----------
+    val enviandoPara = mutableStateOf("")
+    private var webPronto = false
+    private var envioPendente: (() -> Unit)? = null
+    private var aoEnviar: ((Boolean, String) -> Unit)? = null
+    private val tempoEnvio = Runnable { terminarEnvio(false, "O WhatsApp Web demorou demais pra responder.") }
+
+    init { a.runOnUiThread { listaConversas.value = conversasRecentes() } }
+
+    fun webAtivo() = rodando() || estado.value == Estado.Preparando || estado.value == Estado.Enviando
+
+    // abre o whatsapp web por tras assim que a pessoa toca numa figurinha com som, pra ganhar tempo
+    fun preparar() {
+        if (webAtivo() || Prefs.meuNumero(a).isBlank()) return
+        webPronto = false
+        estado.value = Estado.Preparando
+        modo = "preparar"
+        web.loadUrl("https://web.whatsapp.com/")
+    }
+
+    fun largar() {
+        if (estado.value != Estado.Preparando) return
+        modo = ""; webPronto = false; envioPendente = null
+        web.loadUrl("about:blank")
+        estado.value = Estado.Parado
+    }
+
+    val listaConversas = mutableStateOf<List<String>>(emptyList())
+
+    fun conversasRecentes(): List<String> = try {
+        val arr = org.json.JSONArray(a.getSharedPreferences("p", Activity.MODE_PRIVATE).getString("conversas", "[]"))
+        (0 until arr.length()).map { arr.getString(it) }
+    } catch (e: Exception) { emptyList() }
+
+    // alvo vazio = conversa com voce mesmo
+    fun enviarComSom(f: Fig, alvo: String, fim: (Boolean, String) -> Unit) {
+        if (rodando()) { fim(false, "Espere a sincronização terminar."); return }
+        if (Prefs.meuNumero(a).isBlank()) { fim(false, "Conecte o WhatsApp nos Ajustes primeiro."); return }
+        aoEnviar = fim
+        enviandoPara.value = alvo.ifBlank { "você mesmo" }
+        Store.log(a, "envio com som: ${f.id} pra ${if (alvo.isBlank()) "mim" else "uma conversa"}")
+        val js = JS_ENVIAR.replace("@GANCHO@", JS_GANCHO).replace("@ALVO@", org.json.JSONObject.quote(alvo)).replace("@ID@", org.json.JSONObject.quote(f.id))
+        val rodar = { modo = "enviando"; web.evaluateJavascript(js, null); Unit }
+        val estava = estado.value
+        estado.value = Estado.Enviando
+        vigia.removeCallbacks(tempoEnvio); vigia.postDelayed(tempoEnvio, 120_000)
+        if (webPronto) rodar()
+        else {
+            envioPendente = rodar
+            if (estava != Estado.Preparando) { webPronto = false; modo = "preparar"; web.loadUrl("https://web.whatsapp.com/") }
+        }
+        idEnvio = f.id
+    }
+    private var idEnvio = ""
+
+    private fun terminarEnvio(ok: Boolean, msg: String) {
+        vigia.removeCallbacks(tempoEnvio)
+        if (estado.value != Estado.Enviando) return
+        Store.log(a, "envio com som: ${if (ok) "ok" else "falhou"} $msg")
+        modo = ""; webPronto = false; envioPendente = null
+        web.loadUrl("about:blank")
+        estado.value = Estado.Parado
+        val cb = aoEnviar; aoEnviar = null
+        cb?.invoke(ok, msg)
+        Ouvir.pendentes(a)
+    }
 
     fun soltar() { (web.parent as? ViewGroup)?.removeView(web) }
 
@@ -153,6 +226,45 @@ class Sync(private val a: Activity) {
                     else -> { mensagem.value = "Não consegui abrir o painel de figurinhas ($s)."; estado.value = Estado.Erro }
                 }
                 aoTerminar?.invoke()
+            }
+        }
+        @JavascriptInterface fun pronto(conversas: String) {
+            Store.log(a, "whatsapp web pronto pra mandar")
+            a.getSharedPreferences("p", Activity.MODE_PRIVATE).edit().putString("conversas", conversas).apply()
+            a.runOnUiThread {
+                listaConversas.value = conversasRecentes()
+                webPronto = true
+                envioPendente?.let { envioPendente = null; it() }
+            }
+        }
+        @JavascriptInterface fun envio(r: String) {
+            a.runOnUiThread {
+                if (estado.value == Estado.Preparando) { if (r == "desconectado") Prefs.marcarConectado(a, false); largar(); return@runOnUiThread }
+                when {
+                    r == "ok" -> terminarEnvio(true, "")
+                    r == "abrir_eu" -> {
+                        // a conversa com voce mesmo nao estava na lista: abre direto pelo numero
+                        modo = "direto"
+                        web.loadUrl("https://web.whatsapp.com/send?phone=${Prefs.meuNumero(a)}")
+                    }
+                    r == "desconectado" -> { Prefs.marcarConectado(a, false); terminarEnvio(false, "O WhatsApp Web desconectou. Conecte de novo nos Ajustes.") }
+                    r == "sem_conversa" -> terminarEnvio(false, "Não achei essa conversa no WhatsApp Web.")
+                    r == "conversa_errada" -> terminarEnvio(false, "Abriu outra conversa, então não mandei nada.")
+                    r == "nao_achei" -> terminarEnvio(false, "Essa figurinha ainda não está nas favoritas do WhatsApp Web. No WhatsApp, desfavorite e favorite ela de novo uma vez, e tente outra vez.")
+                    else -> terminarEnvio(false, "Não deu pra mandar ($r).")
+                }
+            }
+        }
+        // o whatsapp web mostrou uma versao maior da figurinha do que a guardada no app
+        @JavascriptInterface fun trocar(h: String, b64: String) {
+            val f = Store.figs(a).firstOrNull { it.id == h } ?: return
+            val bytes = Base64.decode(b64, Base64.DEFAULT)
+            val dest = File(Store.dir(a), f.arquivo)
+            if (bytes.size <= dest.length()) return
+            if (f.animada == animada(bytes)) {
+                dest.writeBytes(if (f.animada) bytes else paraPacote(bytes) ?: bytes)
+                Store.log(a, "sync: troquei $h por uma versao maior (${bytes.size}B)")
+                a.runOnUiThread { ImgCache.limpar() }
             }
         }
         @JavascriptInterface fun vazio() { sinal("esperando favoritas"); a.runOnUiThread { esperandoFavoritar.value = true; mensagem.value = "Esperando suas favoritas chegarem…" } }
@@ -284,9 +396,123 @@ class Sync(private val a: Activity) {
 """
 
         // abre o painel de figurinhas na conversa consigo mesmo, vai na aba Favoritas e copia cada uma
+        private const val JS_GANCHO = """
+if (!window.__figGancho) {
+  window.__figGancho = true; window.__figBlobs = [];
+  var criar = URL.createObjectURL;
+  URL.createObjectURL = function(b){ var u = criar.apply(this, arguments); try { if (b && b.size) { window.__figBlobs.push({u: u, b: b, t: Date.now()}); if (window.__figBlobs.length > 500) window.__figBlobs.shift(); } } catch(e){} return u; };
+  var tocar = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function(){ try { this.muted = true; this.volume = 0; } catch(e){} return tocar.apply(this, arguments); };
+}
+window.__figDesde = function(t, re){ return window.__figBlobs.filter(function(x){ return x.t >= t && re.test(x.b.type || ''); }); };
+window.__figB64 = async function(b){ var u8 = new Uint8Array(await b.arrayBuffer()), s = ''; for (var j = 0; j < u8.length; j += 32768) s += String.fromCharCode.apply(null, u8.subarray(j, j + 32768)); return btoa(s); };
+window.__figHash = async function(u8){ var dg = new Uint8Array(await crypto.subtle.digest('SHA-256', u8)); return Array.prototype.slice.call(dg, 0, 8).map(function(x){ return x.toString(16).padStart(2, '0'); }).join(''); };
+window.__figRotulos = function(el){ return Array.prototype.slice.call(el.querySelectorAll('[aria-label],[data-icon],[title],img[alt]')).map(function(e){ return (e.getAttribute('aria-label') || e.getAttribute('data-icon') || e.getAttribute('title') || e.getAttribute('alt') || '').slice(0, 40); }).filter(function(x){ return x; }).join('|'); };
+// toca o som de uma mensagem (mudo) e devolve o audio que o whatsapp web decifrou
+window.__figSomDaMensagem = async function(msg){
+  var bt = Array.prototype.slice.call(msg.querySelectorAll('[aria-label],[data-icon]')).find(function(e){ return /som|sound|audio|áudio|play|reproduz|tocar|mute|mudo|volume|speaker/i.test((e.getAttribute('aria-label') || '') + ' ' + (e.getAttribute('data-icon') || '')); });
+  var t0 = Date.now();
+  if (bt) { (bt.closest('button,[role=button]') || bt).click(); } else { var im = msg.querySelector('img'); if (im) im.click(); }
+  await new Promise(function(r){ setTimeout(r, 3000); });
+  var achados = window.__figDesde(t0, /audio|video|ogg|mpeg|mp4|opus|aac/i);
+  var el = msg.querySelector('audio[src],video[src]');
+  if (!achados.length && el && el.src.indexOf('blob:') === 0) { return await (await fetch(el.src)).blob(); }
+  if (!achados.length) return null;
+  achados.sort(function(x, y){ return y.b.size - x.b.size; });
+  return achados[0].b;
+};
+"""
+
+        private const val JS_PRONTO = """
+(async function(){
+  var A = window.FigAndroid;
+  @GANCHO@
+  var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+  for (var i = 0; i < 180; i++) {
+    if (document.querySelector('#pane-side')) break;
+    if (i > 20 && document.querySelector('canvas') && !document.querySelector('#pane-side')) { A.envio('desconectado'); return; }
+    await dormir(500);
+  }
+  await dormir(1500);
+  var nomes = [];
+  Array.prototype.slice.call(document.querySelectorAll('#pane-side [role="row"], #pane-side [role="listitem"]')).forEach(function(r){
+    var s = r.querySelector('span[title]'); var n = s && s.getAttribute('title');
+    if (n && nomes.indexOf(n) < 0 && nomes.length < 12) nomes.push(n);
+  });
+  A.pronto(JSON.stringify(nomes));
+})();
+"""
+
+        private const val JS_ENVIAR = """
+(async function(){
+  var A = window.FigAndroid, ALVO = @ALVO@, ID = @ID@;
+  @GANCHO@
+  var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+  async function esperar(fn, ms){ var t0 = Date.now(); while (Date.now() - t0 < ms){ try { var v = fn(); if (v) return v; } catch(e){} await dormir(300); } return null; }
+  function porRotulo(re, raiz){ return Array.prototype.slice.call((raiz||document).querySelectorAll('[aria-label]')).find(function(e){ return re.test(e.getAttribute('aria-label')); }); }
+  try {
+    if (ALVO !== '@direto') {
+      var achar = function(){ return Array.prototype.slice.call(document.querySelectorAll('#pane-side span[title]')).find(function(s){ var t = s.getAttribute('title'); return ALVO === '' ? /\((you|você|voce)\)/i.test(t) : t === ALVO; }); };
+      var nome = await esperar(achar, 15000);
+      if (!nome) { A.envio(ALVO === '' ? 'abrir_eu' : 'sem_conversa'); return; }
+      var linha = nome.closest('[role="row"],[role="listitem"]') || nome;
+      ['mousedown', 'mouseup', 'click'].forEach(function(ev){ linha.dispatchEvent(new MouseEvent(ev, {bubbles: true, cancelable: true, view: window})); });
+    }
+    var rodape = await esperar(function(){ return document.querySelector('#main footer'); }, 40000);
+    if (!rodape) { A.envio('sem_rodape'); return; }
+    await dormir(900);
+    if (ALVO && ALVO !== '@direto') {
+      var cab = document.querySelector('#main header');
+      if (!cab || cab.textContent.indexOf(ALVO) < 0) { A.envio('conversa_errada'); return; }
+    }
+    A.log('envio: conversa aberta');
+    var emoji = await esperar(function(){ return porRotulo(/emoji/i, rodape); }, 15000);
+    if (!emoji) { A.envio('sem_botao_emoji'); return; }
+    emoji.click(); await dormir(1200);
+    var aba = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('[role="tab"]')).find(function(e){ return /sticker|figurinha|pegatina/i.test((e.getAttribute('aria-label')||'') + e.textContent); }); }, 15000);
+    if (!aba) { A.envio('sem_aba_figurinhas'); return; }
+    aba.click(); await dormir(1800);
+    var fav = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('button[aria-label]')).find(function(e){ return /^(favorite|favorites|favorita|favoritas|favorito|favoritos)$/i.test(e.getAttribute('aria-label').trim()); }); }, 15000);
+    if (!fav) { A.envio('sem_favoritas'); return; }
+    fav.click(); await dormir(2000);
+    var itens = await esperar(function(){ var l = document.querySelectorAll('[data-testid="sticker-item"]'); return l.length ? Array.prototype.slice.call(l) : null; }, 20000);
+    if (!itens) { A.envio('nao_achei'); return; }
+    var antes = document.querySelectorAll('#main [data-id]').length;
+    for (var i = 0; i < itens.length; i++) {
+      var it = itens[i];
+      it.scrollIntoView({block: 'center'});
+      var img = await esperar(function(){ var x = it.querySelector('img'); return (x && x.complete && x.naturalWidth > 0 && x.src.indexOf('blob:') === 0) ? x : null; }, 6000);
+      if (!img) continue;
+      var u8 = new Uint8Array(await (await (await fetch(img.src)).blob()).arrayBuffer());
+      if (await window.__figHash(u8) !== ID) continue;
+      A.log('envio: achei a figurinha (' + (i + 1) + ' de ' + itens.length + '), mandando');
+      (img.closest('[data-testid="sticker-item"]') || it).click();
+      var foi = await esperar(function(){ return document.querySelectorAll('#main [data-id]').length > antes; }, 8000);
+      A.log('envio: ' + (foi ? 'mensagem apareceu na conversa' : 'nao vi a mensagem aparecer'));
+      // aproveita a mensagem que acabou de sair pra pegar o audio (fica mudo) e entender o que e falado
+      try {
+        var msgs = document.querySelectorAll('#main [data-id]'), ult = msgs[msgs.length - 1];
+        if (ult) {
+          A.log('envio: rotulos da mensagem ' + window.__figRotulos(ult));
+          if (A.precisaSom(ID)) {
+            var som = await window.__figSomDaMensagem(ult);
+            if (som) { A.som(ID, await window.__figB64(som), som.type || ''); A.marcaSom(ID); }
+            else A.log('envio: nao achei o audio na mensagem');
+          }
+        }
+      } catch(e3) { A.log('envio: audio falhou ' + e3); }
+      A.envio(foi ? 'ok' : 'ok');
+      return;
+    }
+    A.envio('nao_achei');
+  } catch(e) { A.envio('erro: ' + e); }
+})();
+"""
+
         private const val JS_COLETA = """
 (async function(){
   var A = window.FigAndroid;
+  @GANCHO@
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   async function esperar(fn, ms){ var t0 = Date.now(); while (Date.now() - t0 < ms){ try { var v = fn(); if (v) return v; } catch(e){} await dormir(400); } return null; }
   function porRotulo(re, raiz){ return Array.prototype.slice.call((raiz||document).querySelectorAll('[aria-label]')).find(function(e){ return re.test(e.getAttribute('aria-label')); }); }
@@ -341,12 +567,24 @@ class Sync(private val a: Activity) {
       var u8 = new Uint8Array(await b.arrayBuffer());
       var dg = new Uint8Array(await crypto.subtle.digest('SHA-256', u8));
       var h = Array.prototype.slice.call(dg, 0, 8).map(function(x){ return x.toString(16).padStart(2, '0'); }).join('');
-      var icone = it.querySelector('[data-icon*="volume"],[data-icon*="speaker"],[data-icon*="audio"],[data-icon*="sound"]');
+      var rot = window.__figRotulos(it);
       var midia = it.querySelector('audio[src],video[src],source[src]');
-      var comSom = !!(icone || midia || /som|sound|audio|áudio/i.test(it.getAttribute('aria-label') || ''));
-      if (i === 0 || comSom || img.naturalWidth < 400) {
-        if (amostras < 6) { amostras++; A.log('item ' + (i + 1) + (comSom ? ' COM SOM' : '') + ' ' + img.naturalWidth + 'x' + img.naturalHeight + ' ' + b.type + ' ' + u8.length + 'B: ' + it.outerHTML.slice(0, 900)); }
-      }
+      var comSom = !!(midia || /som|sound|audio|áudio|volume|speaker/i.test(rot + ' ' + (it.getAttribute('aria-label') || '')));
+      var pequena = img.naturalWidth < 400;
+      if (comSom || pequena) {
+        // passa o mouse por cima: o whatsapp web pode carregar a versao completa (e o audio) so nessa hora
+        var t0 = Date.now();
+        ['mouseover', 'mouseenter', 'pointerover', 'pointerenter'].forEach(function(ev){ img.dispatchEvent(new MouseEvent(ev, {bubbles: true})); });
+        await dormir(1800);
+        var novosB = window.__figDesde(t0, /./);
+        var dentro = it.querySelector('audio[src],video[src],source[src]');
+        if (!midia && dentro) midia = dentro;
+        var maior = window.__figDesde(t0, /image|webp/i).sort(function(x, y){ return y.b.size - x.b.size; })[0];
+        if (maior && maior.b.size > u8.length) A.trocar(h, await window.__figB64(maior.b));
+        var sons = window.__figDesde(t0, /audio|video|ogg|mpeg|mp4|opus|aac/i);
+        if (sons.length && A.precisaSom(h)) { A.som(h, await window.__figB64(sons[0].b), sons[0].b.type); comSom = true; }
+        if (amostras < 8) { amostras++; A.log('item ' + (i + 1) + (comSom ? ' COM SOM' : '') + ' ' + img.naturalWidth + 'x' + img.naturalHeight + ' ' + u8.length + 'B rotulos[' + rot + '] blobs depois do mouse: ' + novosB.map(function(x){ return (x.b.type || '?') + ':' + x.b.size; }).join(',') + ' html: ' + it.outerHTML.slice(0, 700)); }
+      } else if (i === 0 && amostras < 8) { amostras++; A.log('item 1 ' + img.naturalWidth + 'x' + img.naturalHeight + ' rotulos[' + rot + ']'); }
       if (comSom) A.marcaSom(h);
       if (midia && A.precisaSom(h)) {
         try {
@@ -362,6 +600,23 @@ class Sync(private val a: Activity) {
       var bin = ''; for (var j = 0; j < u8.length; j += 32768) bin += String.fromCharCode.apply(null, u8.subarray(j, j + 32768));
       A.nova(h, btoa(bin));
     }
+    try {
+      var msgs = Array.prototype.slice.call(document.querySelectorAll('#main [data-id]')).slice(-40);
+      var comSomMsg = msgs.filter(function(m){ return m.querySelector('img') && /som|sound|audio|áudio|volume|speaker/i.test(window.__figRotulos(m)); });
+      A.log('conversa: ' + msgs.length + ' mensagens olhadas, ' + comSomMsg.length + ' com som');
+      for (var m = 0; m < comSomMsg.length && m < 6; m++) {
+        var mi = comSomMsg[m].querySelector('img');
+        if (!mi || mi.src.indexOf('blob:') !== 0) continue;
+        var mh = await window.__figHash(new Uint8Array(await (await (await fetch(mi.src)).blob()).arrayBuffer()));
+        A.marcaSom(mh);
+        if (!A.precisaSom(mh)) continue;
+        A.log('conversa: rotulos ' + window.__figRotulos(comSomMsg[m]));
+        var sm = await window.__figSomDaMensagem(comSomMsg[m]);
+        if (sm) A.som(mh, await window.__figB64(sm), sm.type || ''); else A.log('conversa: audio de ' + mh + ' nao veio');
+      }
+      var tipos = {}; window.__figBlobs.forEach(function(x){ var k = (x.b.type || '?').split(';')[0]; tipos[k] = (tipos[k] || 0) + 1; });
+      A.log('blobs criados: ' + JSON.stringify(tipos));
+    } catch(e4) { A.log('conversa: falhou ' + e4); }
     A.fim(Object.keys(vistas).join(','));
   } catch(e) { A.erro(String(e)); }
 })();

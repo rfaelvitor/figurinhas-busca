@@ -94,7 +94,7 @@ fun App(a: MainActivity) {
         val webNaTela = a.tela.value == Tela.Conectar && a.sync.estado.value in setOf(Sync.Estado.Conectando, Sync.Estado.Desconectado)
         // o whatsapp web roda por tras da interface, em tamanho real, coberto pelo app:
         // fica "visivel" pro android (nao e pausado) mas a pessoa nunca ve nem toca nele
-        if (a.sync.rodando() && !webNaTela) {
+        if (a.sync.webAtivo() && !webNaTela) {
             AndroidView(factory = { a.sync.soltar(); a.sync.web }, modifier = Modifier.fillMaxSize())
         }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -259,33 +259,53 @@ private fun ResultadoSync(a: MainActivity, modifier: Modifier) {
     }
 }
 
-// figurinha com som: o whatsapp ainda nao deixa outros apps mandarem o audio junto
+// figurinha com som: o pacote nao leva o audio, entao o app manda pelo whatsapp web escondido,
+// abrindo a conversa escolhida e tocando na figurinha das favoritas (vai como se fosse do computador)
 @Composable
 private fun EscolhaSom(a: MainActivity, q: String, res: List<Fig>, f: Fig) {
     val ctx = LocalContext.current
-    val pos = remember(f) { Store.posicaoFavorita(ctx, f) }
     val audio = remember(f) { Store.audio(ctx, f) }
-    DisposableEffect(f) { onDispose { Ouvir.parar() } }
-    AlertDialog(
-        onDismissRequest = { a.escolhaSom.value = null },
-        title = { Text("Essa tem som 🔊", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Box(Modifier.size(120.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(8.dp)) {
-                    Figura(f.arquivo, Modifier.fillMaxSize())
-                }
-                if (audio != null) TextButton(onClick = { Ouvir.tocar(ctx, f) }) { Text("▶  Ouvir") }
-                Spacer(Modifier.height(8.dp))
-                Text("O WhatsApp ainda não deixa outros apps mandarem o som junto. Daqui ela vai só com a imagem.", fontSize = 16.sp)
-                if (pos > 0) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("Pra mandar com som: no WhatsApp, abra as favoritas (⭐). Ela é a ${pos}ª da lista.", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                }
+    val conectado = a.conectado.value
+    // ja vai abrindo o whatsapp web por tras enquanto a pessoa escolhe
+    DisposableEffect(f) { a.sync.preparar(); onDispose { Ouvir.parar() } }
+    val conversas = a.sync.listaConversas.value.filterNot { Regex("\\((you|você|voce)\\)", RegexOption.IGNORE_CASE).containsMatchIn(it) }.take(5)
+    fun fechar() { a.escolhaSom.value = null; a.sync.largar() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = { fechar() }) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(Modifier.size(110.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest).padding(8.dp)) {
+                Figura(f.arquivo, Modifier.fillMaxSize())
+                Text("🔊", Modifier.align(Alignment.TopStart), fontSize = 16.sp)
             }
-        },
-        confirmButton = { Button(onClick = { a.escolhaSom.value = null; a.enviar(q, res, f, semSom = true) }) { Text("Mandar sem som") } },
-        dismissButton = { TextButton(onClick = { a.escolhaSom.value = null; a.abrirWhatsApp() }) { Text("Abrir o WhatsApp") } }
-    )
+            if (audio != null) TextButton(onClick = { Ouvir.tocar(ctx, f) }) { Text("▶  Ouvir") }
+            Spacer(Modifier.height(10.dp))
+            Text("Essa tem som", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            if (conectado) {
+                Text("Mandar com som pra:", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { a.mandarComSom(f, "") }, Modifier.fillMaxWidth().height(50.dp)) { Text("Pra mim mesmo", fontSize = 16.sp) }
+                conversas.forEach { c ->
+                    Spacer(Modifier.height(8.dp))
+                    FilledTonalButton(onClick = { a.mandarComSom(f, c) }, Modifier.fillMaxWidth().height(50.dp)) {
+                        Text(c, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+                if (conversas.isEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Suas conversas recentes aparecem aqui depois da primeira vez.", fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                }
+            } else {
+                Text("Pra mandar com som, conecte seu WhatsApp nos Ajustes.", fontSize = 16.sp, textAlign = TextAlign.Center)
+            }
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = { a.escolhaSom.value = null; a.sync.largar(); a.enviar(q, res, f, semSom = true) }) { Text("Mandar sem som, pelo pacote") }
+        }
+    }
 }
 
 // ---------- configuracao inicial ----------
@@ -522,7 +542,7 @@ private fun Busca(a: MainActivity) {
             }
         }
 
-        AnimatedVisibility(a.sync.rodando()) {
+        AnimatedVisibility(a.sync.estado.value == Sync.Estado.Sincronizando || a.sync.estado.value == Sync.Estado.Processando) {
             Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp, 16.dp, 0.dp)) {
                 Text(if (a.sync.total.intValue > 0) "Sincronizando favoritas… ${a.sync.feitas.intValue} de ${a.sync.total.intValue}" else "Sincronizando favoritas…",
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -618,7 +638,8 @@ private fun Busca(a: MainActivity) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.5.dp)
                     Spacer(Modifier.width(10.dp))
-                    Text("Indo pro pacote 🔍", fontWeight = FontWeight.SemiBold)
+                    Text(if (a.sync.estado.value == Sync.Estado.Enviando) "Mandando com som pra ${a.sync.enviandoPara.value} 🔊" else "Indo pro pacote 🔍",
+                        fontWeight = FontWeight.SemiBold)
                 }
             }
         }
