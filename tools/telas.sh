@@ -24,10 +24,10 @@ abrir --es demo_tela configurar --ei demo_passo 0; foto 11_ola_escuro 4
 abrir --es demo_tela busca --es demo_q dinheiro; foto 12_busca_escuro 4
 adb shell cmd uimode night no
 abrir --es demo_tela sugerir --es demo_texto nossa_que_dia_incrivel_no_trabalho_hoje_adorei_ficar_3_horas_em_reuniao; foto 13_sugerir 5
-adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
-adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
+timeout 20 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
+timeout 20 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
 timeout 20 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
 timeout 20 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
 abrir --es demo_tela conectar; foto 14_conectar 12; foto 15_conectar_depois 15
-adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
-adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
+timeout 20 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
+timeout 20 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
