@@ -31,6 +31,9 @@ class MainActivity : Activity() {
 
     private lateinit var busca: EditText
     private lateinit var status: TextView
+    private lateinit var aviso: Button
+    private var nova: Updater.Versao? = null
+    private var checou = false
     private lateinit var grade: GridView
     private val adapter = Grade()
 
@@ -61,7 +64,12 @@ class MainActivity : Activity() {
             setOnItemClickListener { _, _, pos, _ -> detalhe(lista[pos]) }
         }
 
-        raiz.addView(busca); raiz.addView(botoes); raiz.addView(status)
+        aviso = Button(this).apply {
+            isAllCaps = false; visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#0F8A4F")); setTextColor(Color.WHITE)
+            setOnClickListener { atualizarApp() }
+        }
+        raiz.addView(aviso); raiz.addView(busca); raiz.addView(botoes); raiz.addView(status)
         raiz.addView(grade, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(raiz)
 
@@ -71,6 +79,29 @@ class MainActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
         filtrar()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (checou) return
+        checou = true
+        io.execute {
+            val v = Updater.buscarNova(this) ?: return@execute
+            nova = v
+            ui.post { aviso.text = "Nova versão disponível (${v.numero}). Toque pra atualizar"; aviso.visibility = View.VISIBLE }
+        }
+    }
+
+    private fun atualizarApp() {
+        val v = nova ?: return
+        if (!Updater.podeInstalar(this)) return
+        aviso.text = "Baixando atualização…"; aviso.isEnabled = false
+        io.execute {
+            try { Updater.baixarEInstalar(this, v) } catch (e: Exception) {
+                Store.log(this, "atualizador: erro ${e.message}")
+                ui.post { aviso.text = "Falhou, toque pra tentar de novo"; aviso.isEnabled = true }
+            }
+        }
     }
 
     private fun filtrar() {
