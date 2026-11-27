@@ -101,6 +101,7 @@ class Sync(private val a: Activity) {
     private var aoEnviar: ((Boolean, String) -> Unit)? = null
     private val tempoEnvio = Runnable { terminarEnvio(false, "O WhatsApp Web demorou demais pra responder.") }
 
+    val listaConversas = mutableStateOf<List<String>>(emptyList())
     init { a.runOnUiThread { listaConversas.value = conversasRecentes() } }
 
     fun webAtivo() = rodando() || estado.value == Estado.Preparando || estado.value == Estado.Enviando
@@ -120,8 +121,6 @@ class Sync(private val a: Activity) {
         web.loadUrl("about:blank")
         estado.value = Estado.Parado
     }
-
-    val listaConversas = mutableStateOf<List<String>>(emptyList())
 
     fun conversasRecentes(): List<String> = try {
         val arr = org.json.JSONArray(a.getSharedPreferences("p", Activity.MODE_PRIVATE).getString("conversas", "[]"))
