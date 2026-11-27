@@ -9,6 +9,7 @@ import android.graphics.drawable.Drawable
 import android.util.LruCache
 import android.widget.ImageView
 import androidx.compose.animation.*
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -91,6 +92,11 @@ fun App(a: MainActivity) {
     Tema {
         Box(Modifier.fillMaxSize()) {
         val webNaTela = a.tela.value == Tela.Conectar && a.sync.estado.value in setOf(Sync.Estado.Conectando, Sync.Estado.Desconectado)
+        // o whatsapp web roda por tras da interface, em tamanho real, coberto pelo app:
+        // fica "visivel" pro android (nao e pausado) mas a pessoa nunca ve nem toca nele
+        if (a.sync.rodando() && !webNaTela) {
+            AndroidView(factory = { a.sync.soltar(); a.sync.web }, modifier = Modifier.fillMaxSize())
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Crossfade(targetState = a.tela.value, animationSpec = tween(250), label = "tela") { t ->
                 when (t) {
@@ -100,45 +106,163 @@ fun App(a: MainActivity) {
                     Tela.Conectar -> Conectar(a)
                 }
             }
-            // o whatsapp web precisa estar visivel de verdade pra carregar as figurinhas:
-            // roda numa mini janela no canto, em tamanho real e encolhida
-            AnimatedVisibility(
-                visible = a.sync.rodando() && !webNaTela,
-                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(14.dp),
-                enter = scaleIn(transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 1f)) + fadeIn(),
-                exit = scaleOut(transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 1f)) + fadeOut()
-            ) { MiniSync(a) }
             a.aviso.value?.let { msg ->
-                AlertDialog(onDismissRequest = { a.aviso.value = null },
-                    confirmButton = { TextButton(onClick = { a.aviso.value = null }) { Text("Ok") } },
+                AlertDialog(onDismissRequest = { a.aviso.value = null; a.avisoFechado() },
+                    confirmButton = { TextButton(onClick = { a.aviso.value = null; a.avisoFechado() }) { Text("Ok") } },
                     text = { Text(msg) })
             }
+            a.escolhaSom.value?.let { (q, res, f) -> EscolhaSom(a, q, res, f) }
         }
+        AnimatedVisibility(a.sync.manual && a.sync.rodando() && !webNaTela, enter = fadeIn(tween(250)), exit = fadeOut(tween(300))) { EsperaSync(a) }
+        ResultadoSync(a, Modifier.align(Alignment.TopCenter))
+        }
+    }
+}
+
+// ---------- sincronizacao por tras dos panos ----------
+
+private val FRASES_ESPERA = listOf(
+    "Separando os memes bons…", "Contando figurinhas de gato…", "Tirando a poeira das antigas…",
+    "Conferindo quem tá de óculos escuros…", "Desamassando as figurinhas…", "Lendo o que tá escrito em cada uma…"
+)
+
+@Composable
+private fun EsperaSync(a: MainActivity) {
+    val ctx = LocalContext.current
+    val amostra = remember { Store.figs(ctx).shuffled().take(4) }
+    val inf = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulo")
+    val t by inf.animateFloat(0f, 4f, androidx.compose.animation.core.infiniteRepeatable(tween(2400, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
+    var frase by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(2800); frase = (frase + 1) % FRASES_ESPERA.size } }
+    val esperando = a.sync.esperandoFavoritar.value
+    val total = a.sync.total.intValue
+    val feitas = a.sync.feitas.intValue
+    Box(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
+            .systemBarsPadding().padding(28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.verticalScroll(rememberScrollState())) {
+            // as figurinhas pulam uma de cada vez, como se estivessem sendo copiadas
+            Row(Modifier.height(130.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+                if (amostra.isEmpty()) Text("✨", fontSize = 64.sp)
+                amostra.forEachIndexed { i, f ->
+                    val fase = ((t - i) % 4f + 4f) % 4f
+                    val pulo = if (fase < 1f) kotlin.math.sin(fase * Math.PI).toFloat() else 0f
+                    Box(
+                        Modifier.size(64.dp).graphicsLayer {
+                            translationY = -pulo * 120f; rotationZ = pulo * (if (i % 2 == 0) -14f else 14f)
+                            scaleX = 1f + pulo * .15f; scaleY = 1f + pulo * .15f
+                        }.clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(6.dp)
+                    ) { Figura(f.arquivo, Modifier.fillMaxSize()) }
+                }
+            }
+            Spacer(Modifier.height(28.dp))
+            Text(if (esperando) "Falta só um toque seu" else "Buscando suas favoritas", fontSize = 27.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 32.sp)
+            Spacer(Modifier.height(10.dp))
+            Crossfade(targetState = if (esperando) -1 else frase, animationSpec = tween(300), label = "frase") { k ->
+                Text(
+                    when {
+                        k == -1 -> "O WhatsApp ainda não mandou suas favoritas pra cá."
+                        a.sync.estado.value == Sync.Estado.Processando -> a.sync.mensagem.value
+                        else -> FRASES_ESPERA[k]
+                    },
+                    fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center
+                )
+            }
+            Spacer(Modifier.height(22.dp))
+            if (total > 0) {
+                val prog by androidx.compose.animation.core.animateFloatAsState(feitas / total.toFloat(), label = "prog")
+                LinearProgressIndicator(progress = { prog }, modifier = Modifier.fillMaxWidth(.8f).height(8.dp).clip(RoundedCornerShape(4.dp)))
+                Spacer(Modifier.height(8.dp))
+                Text("$feitas de $total", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (!esperando) {
+                LinearProgressIndicator(Modifier.fillMaxWidth(.8f).height(8.dp).clip(RoundedCornerShape(4.dp)))
+            }
+            AnimatedVisibility(esperando, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Column(
+                    Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer).padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("⭐", fontSize = 40.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Favorite uma figurinha agora", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Spacer(Modifier.height(6.dp))
+                    Text("No WhatsApp, segure qualquer figurinha e toque na estrela. Depois volte aqui que eu continuo sozinho.",
+                        fontSize = 16.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Spacer(Modifier.height(14.dp))
+                    Button(onClick = { a.espiarWhatsApp() }, Modifier.height(50.dp)) { Text("Abrir WhatsApp", fontSize = 16.sp) }
+                }
+            }
+            Spacer(Modifier.height(26.dp))
+            Text("Nada muda no seu WhatsApp. Isso roda por trás, só lendo as favoritas.", fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { a.sync.cancelar() }) { Text("Cancelar") }
+                FilledTonalButton(onClick = { a.sync.manual = false }) { Text("Usar o app enquanto isso") }
+            }
         }
     }
 }
 
 @Composable
-private fun MiniSync(a: MainActivity) {
-    val cfg = androidx.compose.ui.platform.LocalConfiguration.current
-    val escala = 0.24f
-    Column(
-        Modifier.width(132.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-    ) {
-        Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))) {
-            AndroidView(
-                factory = { a.sync.soltar(); a.sync.web },
-                modifier = Modifier.wrapContentSize(Alignment.TopStart, unbounded = true)
-                    .requiredSize(cfg.screenWidthDp.dp, cfg.screenHeightDp.dp)
-                    .graphicsLayer { scaleX = escala; scaleY = escala; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f) }
-            )
-        }
-        Column(Modifier.padding(10.dp, 8.dp)) {
-            Text("Sincronizando", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(if (a.sync.total.intValue > 0) "${a.sync.feitas.intValue} de ${a.sync.total.intValue}" else a.sync.mensagem.value.ifBlank { "abrindo…" },
-                fontSize = 11.sp, lineHeight = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+private fun ResultadoSync(a: MainActivity, modifier: Modifier) {
+    val r = a.resultadoSync.value
+    var mostrado by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    if (r != null) mostrado = r
+    LaunchedEffect(r) { if (r != null) { kotlinx.coroutines.delay(if (r.second) 9000 else 4500); a.resultadoSync.value = null } }
+    AnimatedVisibility(r != null, modifier = modifier.statusBarsPadding().padding(16.dp, 10.dp),
+        enter = slideInVertically { -it } + fadeIn(), exit = slideOutVertically { -it } + fadeOut()) {
+        val (txt, erro) = mostrado ?: return@AnimatedVisibility
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                .background(if (erro) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer)
+                .clickable { a.resultadoSync.value = null }.padding(16.dp, 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(if (erro) "⚠️" else "✅", fontSize = 22.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (erro) "Não deu pra sincronizar" else "Favoritas sincronizadas", fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                    color = if (erro) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(txt, fontSize = 14.sp, color = if (erro) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            if (erro) TextButton(onClick = { a.resultadoSync.value = null; a.sincronizarAgora() }) { Text("Tentar de novo") }
         }
     }
+}
+
+// figurinha com som: o whatsapp ainda nao deixa outros apps mandarem o audio junto
+@Composable
+private fun EscolhaSom(a: MainActivity, q: String, res: List<Fig>, f: Fig) {
+    val ctx = LocalContext.current
+    val pos = remember(f) { Store.posicaoFavorita(ctx, f) }
+    val audio = remember(f) { Store.audio(ctx, f) }
+    DisposableEffect(f) { onDispose { Ouvir.parar() } }
+    AlertDialog(
+        onDismissRequest = { a.escolhaSom.value = null },
+        title = { Text("Essa tem som 🔊", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(Modifier.size(120.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(8.dp)) {
+                    Figura(f.arquivo, Modifier.fillMaxSize())
+                }
+                if (audio != null) TextButton(onClick = { Ouvir.tocar(ctx, f) }) { Text("▶  Ouvir") }
+                Spacer(Modifier.height(8.dp))
+                Text("O WhatsApp ainda não deixa outros apps mandarem o som junto. Daqui ela vai só com a imagem.", fontSize = 16.sp)
+                if (pos > 0) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Pra mandar com som: no WhatsApp, abra as favoritas (⭐). Ela é a ${pos}ª da lista.", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { a.escolhaSom.value = null; a.enviar(q, res, f, semSom = true) }) { Text("Mandar sem som") } },
+        dismissButton = { TextButton(onClick = { a.escolhaSom.value = null; a.abrirWhatsApp() }) { Text("Abrir o WhatsApp") } }
+    )
 }
 
 // ---------- configuracao inicial ----------
@@ -481,6 +605,13 @@ private fun Busca(a: MainActivity) {
         ModalBottomSheet(onDismissRequest = { detalhe = null }) {
             Column(Modifier.padding(24.dp, 0.dp, 24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Figura(f.arquivo, Modifier.size(160.dp))
+                val ctx = LocalContext.current
+                if (Store.audio(ctx, f) != null) {
+                    DisposableEffect(f) { onDispose { Ouvir.parar() } }
+                    TextButton(onClick = { Ouvir.tocar(ctx, f) }) { Text("🔊  Ouvir o som") }
+                } else if (Store.temSom(ctx, f)) {
+                    Text("🔊 Tem som no WhatsApp", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                }
                 Spacer(Modifier.height(16.dp))
                 if (f.texto.isNotBlank()) {
                     Text("\"${f.texto}\"", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
@@ -547,14 +678,11 @@ private fun Bloco(f: Fig, modifier: Modifier, tocar: (Fig) -> Unit, segurar: (Fi
     val escala by androidx.compose.animation.core.animateFloatAsState(if (apertado) .9f else 1f,
         androidx.compose.animation.core.spring(dampingRatio = .5f, stiffness = 600f), label = "aperto")
     val vibra = androidx.compose.ui.platform.LocalHapticFeedback.current
-    // entra com um pulinho na primeira vez que aparece
-    var visto by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { visto = true }
-    val entrada by androidx.compose.animation.core.animateFloatAsState(if (visto) 1f else .85f,
-        androidx.compose.animation.core.spring(dampingRatio = .6f, stiffness = 400f), label = "entrada")
+    val ctx = LocalContext.current
+    val comSom = remember(f.id) { Store.temSom(ctx, f) }
     Box(
         modifier.then(if (tamanho != null) Modifier.size(tamanho) else Modifier.aspectRatio(1f))
-            .graphicsLayer { scaleX = escala * entrada; scaleY = escala * entrada; alpha = .4f + .6f * ((entrada - .85f) / .15f) }
+            .graphicsLayer { scaleX = escala; scaleY = escala }
             .clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
             .combinedClickable(interactionSource = toque, indication = null,
                 onClick = { vibra.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); tocar(f) },
@@ -562,6 +690,10 @@ private fun Bloco(f: Fig, modifier: Modifier, tocar: (Fig) -> Unit, segurar: (Fi
             .padding(6.dp)
     ) {
         Figura(f.arquivo, Modifier.fillMaxSize())
+        if (comSom) {
+            Text("🔊", Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.secondary).padding(3.dp, 0.dp), fontSize = 11.sp)
+        }
         if (f.animada) {
             Text("GIF", Modifier.align(Alignment.TopEnd).clip(RoundedCornerShape(6.dp))
                 .background(MaterialTheme.colorScheme.secondary).padding(4.dp, 1.dp),
@@ -763,12 +895,17 @@ private fun Sugerir(a: MainActivity) {
 
 object ImgCache {
     private val cache = LruCache<String, Drawable>(120)
+    private val emTela = java.util.IdentityHashMap<Drawable, Int>()
     fun get(k: String): Drawable? = cache.get(k)
     fun limpar() = cache.evictAll()
     fun carregar(ctx: Context, arquivo: String): Drawable? = try {
         ImageDecoder.decodeDrawable(ImageDecoder.createSource(File(Store.dir(ctx), arquivo))) { d, _, _ -> d.setTargetSize(256, 256) }
-            .also { cache.put(arquivo, it) }
+            .also { it.setBounds(0, 0, it.intrinsicWidth.coerceAtLeast(1), it.intrinsicHeight.coerceAtLeast(1)); cache.put(arquivo, it) }
     } catch (e: Exception) { null }
+
+    // a mesma figurinha pode estar em dois lugares (mais usadas e grade): so para quando sair de todos
+    fun apareceu(d: Drawable) { val n = (emTela[d] ?: 0) + 1; emTela[d] = n; if (n == 1) (d as? AnimatedImageDrawable)?.start() }
+    fun sumiu(d: Drawable) { val n = (emTela[d] ?: 1) - 1; if (n <= 0) { emTela.remove(d); (d as? AnimatedImageDrawable)?.stop() } else emTela[d] = n }
 }
 
 @Composable
@@ -776,11 +913,24 @@ fun Figura(arquivo: String, modifier: Modifier) {
     val ctx = LocalContext.current
     var d by remember(arquivo) { mutableStateOf(ImgCache.get(arquivo)) }
     LaunchedEffect(arquivo) { if (d == null) d = withContext(Dispatchers.IO) { ImgCache.carregar(ctx, arquivo) } }
-    AnimatedVisibility(visible = d != null, enter = fadeIn(tween(160)), modifier = modifier) {
-        AndroidView(
-            factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
-            update = { iv -> if (iv.drawable !== d) { iv.setImageDrawable(d); (d as? AnimatedImageDrawable)?.start() } },
-            modifier = Modifier.fillMaxSize()
-        )
+    val dr = d
+    // so anima enquanto esta na tela; fora dela a grade descarta o item e a animacao para
+    DisposableEffect(dr) {
+        if (dr != null) ImgCache.apareceu(dr)
+        onDispose { if (dr != null) ImgCache.sumiu(dr) }
+    }
+    val opac by androidx.compose.animation.core.animateFloatAsState(if (dr != null) 1f else 0f, tween(160), label = "opac")
+    androidx.compose.foundation.Canvas(modifier.graphicsLayer { alpha = opac }) {
+        val dd = dr ?: return@Canvas
+        val w = dd.bounds.width().toFloat(); val h = dd.bounds.height().toFloat()
+        if (w <= 0f || h <= 0f) return@Canvas
+        val esc = minOf(size.width / w, size.height / h)
+        drawContext.canvas.nativeCanvas.apply {
+            save()
+            translate((size.width - w * esc) / 2f, (size.height - h * esc) / 2f)
+            scale(esc, esc)
+            dd.draw(this)
+            restore()
+        }
     }
 }

@@ -56,6 +56,28 @@ class MainActivity : ComponentActivity() {
         proximoPacote()
     }
 
+    // figurinha com som escolhida: pergunta se manda sem som ou se abre as favoritas do whatsapp
+    val escolhaSom = mutableStateOf<Triple<String, List<Fig>, Fig>?>(null)
+    // aviso rapido no topo com o resultado da sincronizacao
+    val resultadoSync = mutableStateOf<Pair<String, Boolean>?>(null)
+
+    private val pedirMicrofone = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        Store.log(this, "permissao de audio: $ok")
+        if (ok) Ouvir.pendentes(this)
+    }
+
+    fun pedirTranscricao() {
+        if (!Ouvir.podeTranscrever(this) || Ouvir.faltando(this).isEmpty()) return
+        if (Ouvir.temPermissao(this)) Ouvir.pendentes(this)
+        else if (!getSharedPreferences("p", MODE_PRIVATE).getBoolean("pediu_mic", false)) {
+            getSharedPreferences("p", MODE_PRIVATE).edit().putBoolean("pediu_mic", true).apply()
+            aviso.value = "Algumas favoritas têm som. Pra busca achar pelo que é falado nelas, o Android vai pedir a permissão de áudio. O app não usa o microfone, só lê o som das figurinhas."
+            pedirMicAoFecharAviso = true
+        }
+    }
+    var pedirMicAoFecharAviso = false
+    fun avisoFechado() { if (pedirMicAoFecharAviso) { pedirMicAoFecharAviso = false; pedirMicrofone.launch(android.Manifest.permission.RECORD_AUDIO) } }
+
     private val abrirZip = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importar(it) } }
 
     override fun onCreate(b: Bundle?) {
@@ -64,7 +86,14 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra("demo_importar")?.let { importarDe(File(filesDir, it).inputStream()) }
         intent.getStringExtra("demo_recentes")?.replace('_', ' ')?.split(",")?.reversed()?.forEach { Prefs.guardarBusca(this, it) }
         sync = Sync(this)
-        sync.aoTerminar = { atualizarListas() }
+        sync.aoTerminar = {
+            atualizarListas()
+            val erro = sync.estado.value == Sync.Estado.Erro
+            val mudou = sync.novas.intValue > 0 || sync.removidas.intValue > 0
+            if (sync.manual || erro || mudou) resultadoSync.value = sync.mensagem.value.ifBlank { if (erro) "A sincronização parou." else "Favoritas em dia." } to erro
+            sync.manual = false
+            pedirTranscricao()
+        }
         conectado.value = Prefs.conectado(this)
         total.intValue = Store.figs(this).size
         recentes.value = Prefs.recentes(this)
@@ -79,6 +108,13 @@ class MainActivity : ComponentActivity() {
             "sugerir" -> { tela.value = Tela.Sugerir; demoTexto = intent.getStringExtra("demo_texto")?.replace('_', ' ') ?: "" }
             "busca" -> { tela.value = Tela.Busca; demoBusca = intent.getStringExtra("demo_q")?.replace('_', ' ') ?: ""; demoAjustes = intent.getBooleanExtra("demo_ajustes", false) }
         }
+        // telas de teste no emulador: espera da sincronizacao e escolha de figurinha com som
+        when (intent.getStringExtra("demo_sync")) {
+            "copiando" -> { sync.manual = true; sync.estado.value = Sync.Estado.Sincronizando; sync.total.intValue = 48; sync.feitas.intValue = 17; sync.mensagem.value = "Copiando favoritas…" }
+            "esperando" -> { sync.manual = true; sync.estado.value = Sync.Estado.Sincronizando; sync.esperandoFavoritar.value = true; sync.mensagem.value = "Esperando suas favoritas chegarem…" }
+            "fim" -> resultadoSync.value = "3 novas, 1 removida." to false
+        }
+        if (intent.getBooleanExtra("demo_som", false)) Store.figs(this).firstOrNull { it.animada }?.let { escolhaSom.value = Triple("", listOf(it), it) }
         setContent { App(this) }
         if (intent.getStringExtra("demo_tela") == null) io.execute { Updater.buscarNova(this)?.let { nova.value = it } }
         // carrega os vetores de ia em segundo plano pra primeira busca nao travar
@@ -92,7 +128,7 @@ class MainActivity : ComponentActivity() {
         atualizarListas()
         // sincroniza sozinho se faz mais de 6 horas, sem atrapalhar a busca
         if (conectado.value && tela.value == Tela.Busca && !sync.rodando() &&
-            System.currentTimeMillis() - Prefs.ultimaSync(this) > 6 * 3600_000L) sync.sincronizar()
+            System.currentTimeMillis() - Prefs.ultimaSync(this) > 6 * 3600_000L) { sync.manual = false; sync.sincronizar() }
     }
 
     fun atualizarListas() {
@@ -113,7 +149,7 @@ class MainActivity : ComponentActivity() {
 
     fun sairDeConectar() { tela.value = telaAntesDeConectar }
 
-    fun sincronizarAgora() { if (!sync.rodando()) sync.sincronizar() }
+    fun sincronizarAgora() { if (!sync.rodando()) { sync.manual = true; sync.sincronizar() } else sync.manual = true }
 
     fun desconectarWhatsApp() { sync.desconectar(); conectado.value = false }
 
@@ -140,8 +176,9 @@ class MainActivity : ComponentActivity() {
     // salva a busca nos pacotes, pede pro whatsapp recarregar e volta pro chat
     val enviandoFig = mutableStateOf<Fig?>(null)
 
-    fun enviar(q: String, resultado: List<Fig>, primeira: Fig?, conversa: Boolean = false) {
+    fun enviar(q: String, resultado: List<Fig>, primeira: Fig?, conversa: Boolean = false, semSom: Boolean = false) {
         if (enviando.value) return
+        if (primeira != null && !semSom && Store.temSom(this, primeira)) { escolhaSom.value = Triple(q, resultado, primeira); return }
         if (resultado.isEmpty() && primeira == null && q.isBlank()) return
         primeira?.let { Prefs.registrarUso(this, it.arquivo) }
         enviando.value = true
@@ -191,6 +228,10 @@ class MainActivity : ComponentActivity() {
             aviso.value = "Não encontrei o WhatsApp neste celular."
         }
     }
+
+    fun abrirWhatsApp() = voltarProWhatsApp()
+    // abre o whatsapp sem fechar o app, pra sincronizacao continuar rodando
+    fun espiarWhatsApp() { packageManager.getLaunchIntentForPackage("com.whatsapp")?.let { startActivity(it) } }
 
     private fun voltarProWhatsApp() {
         packageManager.getLaunchIntentForPackage("com.whatsapp")?.let { startActivity(it) }

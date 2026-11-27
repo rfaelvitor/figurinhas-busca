@@ -3,10 +3,13 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- so pra transcrever o audio das figurinhas com som (o android exige essa permissao pro reconhecimento de voz) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
     </queries>
 
     <application

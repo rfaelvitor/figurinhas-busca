@@ -28,6 +28,11 @@ class Sync(private val a: Activity) {
     val novas = mutableIntStateOf(0)
     val removidas = mutableIntStateOf(0)
     val mensagem = mutableStateOf("")
+    // a aba de favoritas veio vazia: a pessoa precisa favoritar uma figurinha com o app rodando
+    val esperandoFavoritar = mutableStateOf(false)
+    // quem pediu: true = pela pessoa (mostra tela de espera), false = automatico (so a barrinha)
+    private val manualEstado = mutableStateOf(false)
+    var manual: Boolean get() = manualEstado.value; set(v) { manualEstado.value = v }
     var aoTerminar: (() -> Unit)? = null
 
     private val io = Executors.newSingleThreadExecutor()
@@ -100,6 +105,7 @@ class Sync(private val a: Activity) {
         if (num.isBlank()) { conectar(); return }
         conhecidos = Store.figs(a).map { it.id }.filter { it.isNotBlank() }.toSet()
         feitas.intValue = 0; total.intValue = 0; novas.intValue = 0; removidas.intValue = 0; falhas = 0
+        esperandoFavoritar.value = false
         pasta.listFiles()?.forEach { it.delete() }
         estado.value = Estado.Sincronizando
         mensagem.value = "Abrindo o WhatsApp Web…"
@@ -107,6 +113,16 @@ class Sync(private val a: Activity) {
         Store.log(a, "sync: comecou")
         sinal("abrindo o WhatsApp Web"); vigia.removeCallbacks(checar); vigia.postDelayed(checar, 15_000)
         web.loadUrl("https://web.whatsapp.com/send?phone=$num")
+    }
+
+    fun cancelar() {
+        modo = ""
+        vigia.removeCallbacks(checar)
+        web.loadUrl("about:blank")
+        esperandoFavoritar.value = false
+        estado.value = Estado.Parado
+        mensagem.value = ""
+        Store.log(a, "sync: cancelada")
     }
 
     fun desconectar() {
@@ -133,13 +149,15 @@ class Sync(private val a: Activity) {
                 when (s) {
                     "desconectado" -> { Prefs.marcarConectado(a, false); estado.value = Estado.Desconectado; mensagem.value = "O WhatsApp Web desconectou. Conecte de novo." }
                     "sem_favoritas" -> { mensagem.value = "Não achei a aba de favoritas. Favorite uma figurinha no celular e tente de novo."; estado.value = Estado.Erro }
+                    "favoritas_vazias" -> { mensagem.value = "O WhatsApp ainda não mandou suas favoritas pro app. Com a sincronização rodando, favorite uma figurinha no WhatsApp e volte."; estado.value = Estado.Erro }
                     else -> { mensagem.value = "Não consegui abrir o painel de figurinhas ($s)."; estado.value = Estado.Erro }
                 }
                 aoTerminar?.invoke()
             }
         }
+        @JavascriptInterface fun vazio() { sinal("esperando favoritas"); a.runOnUiThread { esperandoFavoritar.value = true; mensagem.value = "Esperando suas favoritas chegarem…" } }
         @JavascriptInterface fun mensagem(m: String) { sinal(m); Store.log(a, "sync: $m"); a.runOnUiThread { mensagem.value = m } }
-        @JavascriptInterface fun total(n: Int) { a.runOnUiThread { total.intValue = n } }
+        @JavascriptInterface fun total(n: Int) { sinal("copiando"); a.runOnUiThread { esperandoFavoritar.value = false; total.intValue = n } }
         @JavascriptInterface fun conhece(h: String): Boolean = h in conhecidos
         @JavascriptInterface fun existe(h: String) { sinal(); a.runOnUiThread { feitas.intValue++ } }
         @JavascriptInterface fun falhou() { sinal(); falhas++; a.runOnUiThread { feitas.intValue++ } }
@@ -148,8 +166,18 @@ class Sync(private val a: Activity) {
             File(pasta, "$h.webp").writeBytes(Base64.decode(b64, Base64.DEFAULT))
             a.runOnUiThread { feitas.intValue++; novas.intValue++ }
         }
+        @JavascriptInterface fun marcaSom(h: String) { sinal(); Store.marcarSom(a, h) }
+        @JavascriptInterface fun precisaSom(h: String): Boolean = !File(Store.dir(a), "$h.som").exists()
+        @JavascriptInterface fun som(h: String, b64: String, tipo: String) {
+            sinal()
+            File(Store.dir(a), "$h.som").writeBytes(Base64.decode(b64, Base64.DEFAULT))
+            Store.marcarSom(a, h)
+            Store.log(a, "sync: audio de $h salvo ($tipo)")
+        }
         @JavascriptInterface fun fim(lista: String) {
-            val vistas = lista.split(',').filter { it.isNotBlank() }.toSet()
+            val ordem = lista.split(',').filter { it.isNotBlank() }
+            if (ordem.isNotEmpty()) File(a.filesDir, "ordem_favoritas.txt").writeText(ordem.joinToString("\n"))
+            val vistas = ordem.toSet()
             a.runOnUiThread { estado.value = Estado.Processando; mensagem.value = "Descrevendo as figurinhas novas…" }
             io.execute { processar(vistas) }
         }
@@ -196,6 +224,7 @@ class Sync(private val a: Activity) {
                     else -> "${novasFiles.size} nova${if (novasFiles.size == 1) "" else "s"}, $tiradas removida${if (tiradas == 1) "" else "s"}."
                 }
                 aoTerminar?.invoke()
+                Ouvir.pendentes(a)
             }
         } catch (e: Exception) {
             Store.log(a, "sync: erro ao processar ${e.message}")
@@ -276,11 +305,23 @@ class Sync(private val a: Activity) {
     if (!fav) { A.estado('sem_favoritas'); return; }
     fav.click(); await dormir(3000);
     var itens = function(){ return Array.prototype.slice.call(document.querySelectorAll('[data-testid="sticker-item"]')); };
-    var lista = itens(), antes = -1;
+    var lista = itens();
+    // aparelho novo pode abrir com a aba vazia ate o whatsapp mandar a lista; espera e pede pra favoritar uma
+    var inicio = Date.now(), avisou = false;
+    while (lista.length === 0 && Date.now() - inicio < 300000) {
+      var passou = Math.round((Date.now() - inicio) / 1000);
+      if (passou > 25 && !avisou) { avisou = true; A.vazio(); }
+      A.log('favoritas ainda vazias (' + passou + 's)');
+      await dormir(5000);
+      if (passou % 30 < 5) { fav.click(); await dormir(1500); }
+      lista = itens();
+    }
+    if (lista.length === 0) { A.estado('favoritas_vazias'); return; }
+    var antes = -1;
     for (var k = 0; k < 10 && lista.length !== antes; k++){ antes = lista.length; await dormir(800); lista = itens(); }
     A.total(lista.length);
     A.mensagem('Copiando favoritas…');
-    var vistas = {};
+    var vistas = {}, amostras = 0;
     for (var i = 0; i < lista.length; i++){
       var it = lista[i];
       it.scrollIntoView({block: 'center'});
@@ -290,6 +331,21 @@ class Sync(private val a: Activity) {
       var u8 = new Uint8Array(await b.arrayBuffer());
       var dg = new Uint8Array(await crypto.subtle.digest('SHA-256', u8));
       var h = Array.prototype.slice.call(dg, 0, 8).map(function(x){ return x.toString(16).padStart(2, '0'); }).join('');
+      var icone = it.querySelector('[data-icon*="volume"],[data-icon*="speaker"],[data-icon*="audio"],[data-icon*="sound"]');
+      var midia = it.querySelector('audio[src],video[src],source[src]');
+      var comSom = !!(icone || midia || /som|sound|audio|áudio/i.test(it.getAttribute('aria-label') || ''));
+      if (i === 0 || comSom || img.naturalWidth < 400) {
+        if (amostras < 6) { amostras++; A.log('item ' + (i + 1) + (comSom ? ' COM SOM' : '') + ' ' + img.naturalWidth + 'x' + img.naturalHeight + ' ' + b.type + ' ' + u8.length + 'B: ' + it.outerHTML.slice(0, 900)); }
+      }
+      if (comSom) A.marcaSom(h);
+      if (midia && A.precisaSom(h)) {
+        try {
+          var bs = await (await fetch(midia.src)).blob();
+          var a8 = new Uint8Array(await bs.arrayBuffer()), bs64 = '';
+          for (var q = 0; q < a8.length; q += 32768) bs64 += String.fromCharCode.apply(null, a8.subarray(q, q + 32768));
+          A.som(h, btoa(bs64), bs.type || '');
+        } catch(e2) { A.log('audio da ' + (i + 1) + ' falhou: ' + e2); }
+      }
       if (vistas[h]) { A.existe(h); continue; }
       vistas[h] = 1;
       if (A.conhece(h)) { A.existe(h); continue; }

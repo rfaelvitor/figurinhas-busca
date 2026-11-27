@@ -58,6 +58,32 @@ object Store {
 
     fun limparCache() { cache = null; Vetores.limpar() }
 
+    // figurinhas com som: o whatsapp ainda nao deixa outro app mandar o audio junto,
+    // entao guardamos quais sao, o audio (quando o whatsapp web entrega) e o que e falado nele
+    @Volatile private var sons: MutableSet<String>? = null
+    private fun arqSons(ctx: Context) = File(ctx.filesDir, "com_som.txt")
+    @Synchronized private fun sons(ctx: Context): MutableSet<String> =
+        sons ?: (if (arqSons(ctx).exists()) arqSons(ctx).readLines().filter { it.isNotBlank() }.toMutableSet() else mutableSetOf()).also { sons = it }
+    @Synchronized fun marcarSom(ctx: Context, id: String) {
+        if (sons(ctx).add(id)) arqSons(ctx).writeText(sons(ctx).joinToString("\n"))
+    }
+    fun temSom(ctx: Context, f: Fig) = f.id.isNotBlank() && f.id in sons(ctx)
+    fun audio(ctx: Context, f: Fig): File? = File(dir(ctx), "${f.id}.som").takeIf { f.id.isNotBlank() && it.exists() }
+
+    // posicao na aba de favoritas do whatsapp (1 = primeira), pra achar rapido as que tem som
+    fun posicaoFavorita(ctx: Context, f: Fig): Int {
+        val arq = File(ctx.filesDir, "ordem_favoritas.txt")
+        if (f.id.isBlank() || !arq.exists()) return 0
+        return arq.readLines().indexOf(f.id) + 1
+    }
+
+    // junta o que e falado no audio ao texto da figurinha, pra busca achar pelo que se ouve
+    @Synchronized fun adicionarFala(ctx: Context, id: String, fala: String) {
+        val lista = figs(ctx).map { if (it.id == id && !it.texto.contains(fala, true)) it.copy(texto = (it.texto + " " + fala).trim(), tags = if (it.tags.contains("som")) it.tags else it.tags + " som audio falando") else it }
+        salvarIndice(ctx, lista)
+        File(dir(ctx), "$id.fala").writeText(fala)
+    }
+
     // calibrado com as figurinhas reais (tools/avaliar_busca.py)
     var SEM_MIN = .45
     var SEM_PESO = 160.0
