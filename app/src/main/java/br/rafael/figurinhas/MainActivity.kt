@@ -47,7 +47,8 @@ class MainActivity : Activity() {
         val botoes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fun botao(t: String, acao: () -> Unit) = Button(this).apply { text = t; isAllCaps = false; setOnClickListener { acao() } }
             .also { botoes.addView(it, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)) }
-        botao("Importar dados") { escolherZip() }
+        botao("Importar") { escolherZip() }
+        botao("Atualizar WA") { atualizarNoWhatsApp() }
         botao("Add pacote") { adicionar(Store.PACK_EST, "🔍 Busca") }
         botao("Add GIF") { adicionar(Store.PACK_ANIM, "🔍 Busca GIF") }
         botao("WhatsApp") { abrirWhatsApp() }
@@ -107,8 +108,14 @@ class MainActivity : Activity() {
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
         if (req == 10 && res == RESULT_OK) data?.data?.let { importar(it) }
-        if (req == 200 && res == RESULT_CANCELED && data?.getStringExtra("validation_error") != null) {
-            status.text = "WhatsApp recusou o pacote: ${data.getStringExtra("validation_error")}"
+        if (req in 200..202) {
+            val extras = data?.extras?.keySet()?.joinToString { k -> "$k=${data.extras?.get(k)}" } ?: "-"
+            Store.log(this, "retorno add pacote req=$req res=$res extras=$extras")
+            if (res == RESULT_CANCELED && data?.getStringExtra("validation_error") != null) {
+                status.text = "WhatsApp recusou o pacote: ${data.getStringExtra("validation_error")}"
+            }
+            // depois do pacote normal, pede o de gif
+            if (req == 201) adicionar(Store.PACK_ANIM, "🔍 Busca GIF", 202)
         }
     }
 
@@ -140,11 +147,21 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun adicionar(id: String, nome: String) {
+    // hipotese: o whatsapp so rele as figurinhas quando o pacote e "adicionado" de novo
+    private fun atualizarNoWhatsApp() {
+        ui.removeCallbacks(atualizarPacotes)
+        io.execute {
+            Store.preencherPacotes(this, lista)
+            ui.post { adicionar(Store.PACK_EST, "🔍 Busca", 201) }
+        }
+    }
+
+    private fun adicionar(id: String, nome: String, req: Int = 200) {
         val i = Intent("com.whatsapp.intent.action.ENABLE_STICKER_PACK").apply {
             putExtra("sticker_pack_id", id); putExtra("sticker_pack_authority", Store.AUTH); putExtra("sticker_pack_name", nome)
         }
-        try { startActivityForResult(i, 200) } catch (e: ActivityNotFoundException) {
+        Store.log(this, "pedindo add/atualizar do pacote $id")
+        try { startActivityForResult(i, req) } catch (e: ActivityNotFoundException) {
             Toast.makeText(this, "WhatsApp não encontrado", Toast.LENGTH_LONG).show()
         }
     }
