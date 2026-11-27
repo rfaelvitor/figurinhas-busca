@@ -14,6 +14,7 @@ android {
         val build = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionCode = build
         versionName = "0.$build"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     // chave fixa pra cada build novo instalar por cima do anterior sem desinstalar
     signingConfigs {
@@ -51,6 +52,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.animation:animation")
     // leitura de texto e do conteudo das figurinhas novas, no proprio celular
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.mlkit:image-labeling:17.0.9")
+    // versao pelo Google Play Services: o modelo baixa sozinho e o app fica leve
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-image-labeling:16.0.8")
 }
