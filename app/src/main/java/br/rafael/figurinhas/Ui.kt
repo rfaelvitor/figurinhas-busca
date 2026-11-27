@@ -135,6 +135,10 @@ private fun EsperaSync(a: MainActivity) {
     var frase by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(2800); frase = (frase + 1) % FRASES_ESPERA.size } }
     val esperando = a.sync.esperandoFavoritar.value
+    // o teclado da busca ficava por cima do botao de abrir o whatsapp
+    val teclado = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val foco = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(Unit) { foco.clearFocus(); teclado?.hide() }
     val total = a.sync.total.intValue
     val feitas = a.sync.feitas.intValue
     Box(
