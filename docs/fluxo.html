@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Figurinhas por dentro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* layout: linha de metrô vertical, cada etapa é uma estação, desvios saem pela direita */
+:root{--bg:#F3F5F9;--surface:#FFFFFF;--ink:#17202D;--muted:#5A6476;--line:#D6DCE6;--auto:#0D7A64;--auto-soft:#E0F2ED;--ai:#6A44B8;--ai-soft:#EEE7F9;--you:#A85C00;--you-soft:#FBEEDB;--stop:#B3261E;--stop-soft:#FBE7E5;--tg:#E7EEF7;--f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;--f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E131B;--surface:#161D28;--ink:#E5EAF2;--muted:#98A3B5;--line:#2A3444;--auto:#3DC6A4;--auto-soft:#12302A;--ai:#B79AF2;--ai-soft:#271F3D;--you:#F2A750;--you-soft:#3A2913;--stop:#F2837A;--stop-soft:#3A1C1A;--tg:#1C2633;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0E131B;--surface:#161D28;--ink:#E5EAF2;--muted:#98A3B5;--line:#2A3444;--auto:#3DC6A4;--auto-soft:#12302A;--ai:#B79AF2;--ai-soft:#271F3D;--you:#F2A750;--you-soft:#3A2913;--stop:#F2837A;--stop-soft:#3A1C1A;--tg:#1C2633;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1060px;margin:0 auto;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));padding-block:40px 72px;display:grid;gap:56px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
+h1{font-size:clamp(2.2rem,5vw,3.2rem);letter-spacing:-.02em;line-height:1.05}
+h2{font-size:1.55rem;letter-spacing:-.01em}
+h3{font-size:1.12rem}
+p{margin:0}
+code{font-family:var(--f-mono);font-size:.86em;background:color-mix(in srgb,var(--line) 45%,transparent);padding:.08em .38em;border-radius:4px;overflow-wrap:anywhere}
+a{color:var(--auto)}
+a:focus-visible{outline:2px solid var(--auto);outline-offset:2px;border-radius:4px}
+.eyebrow{font-family:var(--f-mono);font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.lead{color:var(--muted);max-width:64ch;font-size:1.04rem}
+.sub{color:var(--muted);max-width:66ch}
+section{display:grid;gap:20px}
+header{display:grid;gap:14px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px}
+.legend span{display:inline-flex;align-items:center;gap:7px;font-size:.86rem;color:var(--muted)}
+.legend i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.clock{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.clock svg{flex:none;color:var(--auto)}
+.clock p{min-width:0}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+.diagram pre.mermaid{margin:0;background:transparent;font-family:var(--f-body);text-align:center;min-width:560px}
+.flow{list-style:none;margin:0;padding:0;position:relative;display:grid;gap:0}
+.flow::before{content:"";position:absolute;left:15px;top:18px;bottom:18px;width:4px;border-radius:2px;background:var(--auto);opacity:.35}
+.st{display:grid;grid-template-columns:34px minmax(0,1fr) minmax(0,250px);gap:6px 18px;padding-block:14px;position:relative}
+.dot{width:22px;height:22px;margin:4px 0 0 6px;border-radius:50%;background:var(--surface);border:4px solid var(--auto);position:relative;z-index:1;grid-row:span 2}
+.st[data-k="ai"] .dot{border-color:var(--ai)}
+.st[data-k="you"] .dot{border-color:var(--you);background:var(--you)}
+.body{display:grid;gap:8px;min-width:0;align-content:start}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px}
+.num{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.tag{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px}
+.tag.auto{background:var(--auto-soft);color:var(--auto)}
+.tag.ai{background:var(--ai-soft);color:var(--ai)}
+.tag.you{background:var(--you-soft);color:var(--you)}
+.tag.lock{background:var(--stop-soft);color:var(--stop)}
+.body p{color:var(--muted);max-width:66ch}
+.body p b{color:var(--ink);font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+.meta .tool{font-family:var(--f-mono);font-size:.76rem;border:1px solid var(--line);border-radius:6px;padding:2px 8px;background:var(--surface)}
+.meta .file{font-family:var(--f-mono);font-size:.76rem;color:var(--muted);padding:2px 0}
+.outs{display:grid;gap:8px;align-content:start;min-width:0}
+.out{font-size:.84rem;border-radius:8px;padding:8px 10px 8px 12px;border-left:3px solid;line-height:1.4}
+.out.stop{background:var(--stop-soft);border-color:var(--stop)}
+.out.you{background:var(--you-soft);border-color:var(--you)}
+.out.ok{background:var(--auto-soft);border-color:var(--auto)}
+.out small{display:block;font-family:var(--f-mono);font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;opacity:.8;margin-bottom:2px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.bubble{background:var(--tg);border-radius:14px 14px 14px 4px;padding:12px 14px;font-size:.9rem;line-height:1.45;display:grid;gap:4px;min-width:0;align-content:start;overflow-wrap:anywhere}
+.bubble .k{font-weight:600}
+.bubble .q{font-style:italic;color:var(--muted)}
+.bubble .btns{display:flex;gap:6px;margin-top:6px}
+.bubble .btns span{flex:1;text-align:center;font-size:.82rem;background:var(--surface);border-radius:8px;padding:5px}
+.bubble code{white-space:pre-line;display:block;font-size:.8rem;padding:6px 8px}
+.bubble .lnk{color:var(--auto);font-size:.84rem}
+.note{font-size:.82rem;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:grid;gap:10px;align-content:start;min-width:0}
+.panel h3{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.panel .small{font-size:.84rem;color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.9rem}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:500}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:600}
+td.nw{white-space:nowrap}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.stop{background:var(--stop-soft);color:var(--stop)}
+.pill.you{background:var(--you-soft);color:var(--you)}
+.pill.ok{background:var(--auto-soft);color:var(--auto)}
+.build{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:b}
+.build>li{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:start;counter-increment:b}
+.build>li::before{content:counter(b,decimal-leading-zero);font-family:var(--f-mono);font-size:.8rem;color:var(--muted);padding-top:3px;font-variant-numeric:tabular-nums}
+.build b{font-weight:600}
+.build p{color:var(--muted)}
+.build ul{margin:6px 0 6px 18px;padding:0;color:var(--muted);list-style:disc}
+.build ul li{margin:3px 0}
+.build .meta{margin-top:6px}
+.docs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.tree{margin:0;font-family:var(--f-mono);font-size:.8rem;line-height:1.7;overflow-x:auto;color:var(--ink)}
+.tree span{color:var(--muted)}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 14px;font-size:.88rem}
+.kv dt{font-family:var(--f-mono);font-size:.8rem}
+.kv dd{margin:0;color:var(--muted)}
+.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.split ul{margin:0;padding-left:18px;display:grid;gap:7px}
+.split li::marker{color:var(--muted)}
+.panel.a{border-top:4px solid var(--auto)}
+.panel.y{border-top:4px solid var(--you)}
+.checklist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.checklist li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+.checklist .ic{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:.72rem;font-weight:700;margin-top:1px}
+.checklist .done .ic{background:var(--auto);color:var(--surface)}
+.checklist .todo .ic{border:2px solid var(--you)}
+.checklist li span{color:var(--muted);font-size:.88rem}
+.hist{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.hist summary{cursor:pointer;font-size:.88rem;color:var(--muted);font-weight:500}
+.hist summary:hover{color:var(--ink)}
+.hist[open] summary{margin-bottom:12px}
+.atualizado{font-family:var(--f-mono);font-size:.74rem;color:var(--muted)}
+.lista{margin:0;padding-left:18px;display:grid;gap:8px;color:var(--muted)}
+.lista b{color:var(--ink);font-weight:600}
+.panel p{color:var(--muted)}
+.panel p b{color:var(--ink);font-weight:600}
+.panel p + p{margin-top:2px}
+section h3{margin-top:4px}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+[id]{scroll-margin-top:64px}
+.toc{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;gap:10px}
+.toc ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 16px;counter-reset:t}
+.toc li{counter-increment:t;min-width:0}
+.toc a{display:grid;grid-template-columns:30px minmax(0,1fr);gap:4px;padding:7px 8px;border-radius:8px;text-decoration:none;color:var(--ink)}
+.toc a::before{content:counter(t,decimal-leading-zero);font-family:var(--f-mono);font-size:.78rem;color:var(--muted);padding-top:2px}
+.toc a:hover{background:color-mix(in srgb,var(--auto-soft) 70%,transparent)}
+.toc a b{font-weight:600}
+.toc a small{grid-column:2;color:var(--muted);font-size:.8rem;line-height:1.35}
+.minibar{position:fixed;inset:0 0 auto 0;z-index:20;padding-top:env(safe-area-inset-top,0px);background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);transform:translateY(-110%);transition:transform .2s ease}
+.minibar.on{transform:none}
+.minibar .in{max-width:1060px;margin:0 auto;padding-block:8px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.minibar .in::-webkit-scrollbar{display:none}
+.minibar a{flex:none;white-space:nowrap;font-size:.8rem;padding:4px 10px;border-radius:999px;color:var(--muted);text-decoration:none;border:1px solid transparent}
+.minibar a:hover{color:var(--ink)}
+.minibar a.ativo{color:var(--ink);border-color:var(--line);background:var(--surface);font-weight:500}
+.minibar a.topo{font-family:var(--f-mono)}
+@media (prefers-reduced-motion:reduce){.minibar{transition:none}}
+@media (max-width:760px){.st{grid-template-columns:34px minmax(0,1fr)}.outs{grid-column:2}.split,.docs{grid-template-columns:minmax(0,1fr)}.wrap{gap:44px}}
+@media (max-width:420px){.kv{grid-template-columns:minmax(0,1fr);gap:2px}.kv dd{margin-bottom:8px}}
+</style>
+</head><body>
+<nav class="minibar" aria-label="Atalhos das seções"><div class="in"><a class="topo" href="#topo" title="Voltar ao topo">↑ topo</a><a href="#visao">Visão geral</a><a href="#fluxo">Fluxo</a><a href="#tg">No WhatsApp</a><a href="#regras">Busca</a><a href="#tools">Ferramentas</a><a href="#como">Como foi feito</a><a href="#docs">Documentação</a><a href="#split">Você x app</a><a href="#testes">Testes</a><a href="#avaliacao">Avaliação</a><a href="#hoje">Situação</a><a href="#melhorias">Melhorias</a></div></nav>
+<div class="wrap">
+<header id="topo">
+  <span class="eyebrow">Como o app funciona hoje</span>
+  <h1>Figurinhas por dentro</h1>
+  <span class="atualizado">Atualizado em 27/11/2026, 12h00 (horário de Brasília)</span>
+  <p class="lead">Você digita o que a figurinha mostra, diz ou sente, o app acha entre as suas favoritas e coloca o resultado num pacote 🔍 dentro do WhatsApp, onde ela vai como figurinha de verdade, animada inclusive. Roda inteiro no seu celular, sem internet pra buscar. Hoje está em uso por você, com 256 favoritas importadas por arquivo; a sincronização automática ainda não existe.</p>
+  <div class="legend" aria-label="Legenda">
+    <span><i style="background:var(--auto)"></i>automático, sem IA</span>
+    <span><i style="background:var(--ai)"></i>automático, com IA</span>
+    <span><i style="background:var(--you)"></i>precisa de você</span>
+    <span><i style="background:var(--stop)"></i>sai do fluxo</span>
+  </div>
+</header>
+
+<nav class="toc" id="sumario" aria-label="Sumário">
+  <span class="eyebrow">Sumário</span>
+  <ol>
+    <li><a href="#visao"><b>Visão geral</b><small>o diagrama da busca até o envio</small></a></li>
+    <li><a href="#fluxo"><b>O fluxo de uma busca</b><small>cada etapa, ferramenta e desvio</small></a></li>
+    <li><a href="#tg"><b>O que aparece no WhatsApp</b><small>pacotes, avisos e confirmações</small></a></li>
+    <li><a href="#regras"><b>Como a busca decide</b><small>texto, sinônimos e sentido por IA</small></a></li>
+    <li><a href="#tools"><b>Ferramentas usadas</b><small>o que roda onde</small></a></li>
+    <li><a href="#como"><b>Como foi construído</b><small>tentativas, erros e soluções em ordem</small></a></li>
+    <li><a href="#docs"><b>Documentação</b><small>estrutura, versões, dados e problemas comuns</small></a></li>
+    <li><a href="#split"><b>Automático x você</b><small>o que o app faz e o que é seu</small></a></li>
+    <li><a href="#testes"><b>Plano de testes</b><small>no celular e no emulador</small></a></li>
+    <li><a href="#avaliacao"><b>Avaliação crítica</b><small>como estamos, expectativas e o que está no radar</small></a></li>
+    <li><a href="#hoje"><b>Situação hoje</b><small>o que está feito e o que falta</small></a></li>
+    <li><a href="#melhorias"><b>Ideias de melhoria</b><small>em ordem de prioridade</small></a></li>
+  </ol>
+</nav>
+
+<section aria-labelledby="visao">
+  <h2 id="visao">Visão geral em um diagrama</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  A["Você abre a busca<br/>(atalho na barra ou ícone)"] --> B{"Sabe o que quer?"}
+  B -- "sim" --> C["Digita: gato comendo"]
+  B -- "não" --> D["Cola a conversa e escolhe o clima<br/>(ironia, consolar...)"]
+  C --> E["Busca no celular:<br/>texto + sinônimos + sentido (IA)"]
+  D --> E
+  E --> F{"Achou?"}
+  F -- "não" --> G["Sugestões de busca"]
+  F -- "sim" --> H["Você toca na figurinha"]
+  H --> I["App monta os pacotes<br/>🔍 Busca e 🔍 Busca GIF"]
+  I --> J["Pede pro WhatsApp recarregar"]
+  J --> K{"Confirmação automática ligada?"}
+  K -- "sim" --> L["App toca em Atualizar sozinho"]
+  K -- "não" --> M["Você toca em Atualizar"]
+  L --> N["Volta pro WhatsApp"]
+  M --> N
+  N --> O["Você envia pela aba 🔍"]
+  </pre></div>
+</section>
+
+<section aria-labelledby="fluxo">
+  <h2 id="fluxo">O fluxo de uma busca</h2>
+  <div class="clock"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+  <p><b>Quem dá a partida:</b> você, toda vez que quer mandar uma figurinha. Não tem nada agendado. As favoritas entram no app por um arquivo <code>dados.zip</code> que importamos uma vez; a sincronização sozinha é a próxima fase.</p></div>
+  <ol class="flow">
+    <li class="st" data-k="you">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">1</span><h3>Abrir a busca</h3><span class="tag you">você</span></div>
+        <p>Pelo atalho <b>"Buscar figurinha"</b> na barra de notificações, de dentro da conversa, ou pelo ícone roxo do app. O teclado já abre.</p>
+        <div class="meta"><span class="tool">BuscaTile</span><span class="file">BuscaTile.kt</span></div>
+      </div>
+      <div class="outs"><div class="out ok"><small>dica</small>Pelo atalho você volta direto pra mesma conversa no fim.</div></div>
+    </li>
+    <li class="st" data-k="you">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">2</span><h3>Dizer o que quer</h3><span class="tag you">você</span></div>
+        <p>Digita o que a figurinha <b>mostra, diz ou sente</b> ("gato comendo", "aguardando o pix", "to cansado"). Sem buscas, aparecem os <b>recentes</b> (com Limpar) e <b>sugestões</b> tiradas das suas próprias figurinhas.</p>
+        <div class="meta"><span class="tool">Jetpack Compose</span><span class="file">Ui.kt</span></div>
+      </div>
+      <div class="outs"><div class="out you"><small>sem ideia</small>"Sem ideia do que mandar?" abre a etapa 2b.</div></div>
+    </li>
+    <li class="st" data-k="ai">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">2b</span><h3>Me ajuda a responder</h3><span class="tag ai">IA</span></div>
+        <p>Você cola a mensagem que recebeu (ou a conversa toda) e escolhe <b>o clima da resposta</b>: Ironia, Rir junto, Concordar, Discordar, Consolar, Zoar, Surpresa, Preguiça, Raiva, Amor, Tanto faz. O app junta o sentido da conversa com o do clima e sugere até 24 figurinhas.</p>
+        <div class="meta"><span class="tool">vetores de IA</span><span class="file">Store.sugerir()</span></div>
+      </div>
+      <div class="outs"><div class="out ok"><small>exemplo real</small>"que dia incrível, 3 horas de reunião" + Ironia trouxe "supostamente" e "a minha cara de felicidade".</div></div>
+    </li>
+    <li class="st" data-k="ai">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">3</span><h3>Buscar nas favoritas</h3><span class="tag ai">IA</span></div>
+        <p>Tudo no celular, em milissegundos. Soma três coisas: <b>texto</b> da figurinha e da descrição (aceita erro de digitação e "calaboca" junto), <b>sinônimos</b> (46 grupos, tipo grana = dinheiro) e <b>sentido</b> por vetores de IA (chefe chato acha "executivo de terno" e "meu patrão").</p>
+        <div class="meta"><span class="tool">Store.buscar()</span><span class="tool">Vetores.kt</span><span class="file">assets/vetores.bin</span><span class="file">assets/sinonimos.json</span></div>
+      </div>
+      <div class="outs"><div class="out stop"><small>nada achado</small>Mostra "Nada com ..." e sugestões de outras buscas.</div></div>
+    </li>
+    <li class="st" data-k="you">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">4</span><h3>Escolher a figurinha</h3><span class="tag you">você</span></div>
+        <p><b>Toque</b> manda; <b>segurar</b> abre a figurinha grande com texto e descrição. A tocada vira a primeira do pacote.</p>
+      </div>
+      <div class="outs"></div>
+    </li>
+    <li class="st" data-k="auto">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">5</span><h3>Montar os pacotes</h3><span class="tag auto">automático</span></div>
+        <p>Os resultados viram dois pacotes: <b>🔍 Busca</b> (estáticas) e <b>🔍 Busca GIF</b> (animadas), porque o WhatsApp não aceita misturar. No máximo <b>30 por pacote</b>; com menos de 3, completa com figurinhas vazias. Só o pacote que mudou ganha versão nova.</p>
+        <div class="meta"><span class="tool">ContentProvider</span><span class="file">StickerProvider.kt</span><span class="file">packs.json</span></div>
+      </div>
+      <div class="outs"></div>
+    </li>
+    <li class="st" data-k="auto">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">6</span><h3>Fazer o WhatsApp recarregar</h3><span class="tag auto">automático</span></div>
+        <p>O WhatsApp <b>só baixa as figurinhas de novo quando o pacote é "adicionado" outra vez</b> (descobrimos pelo diagnóstico). O app pede isso e o WhatsApp mostra a janela <b>Update</b>. Com a confirmação automática ligada, o app toca nela sozinho.</p>
+        <div class="meta"><span class="tool">ENABLE_STICKER_PACK</span><span class="tool">Acessibilidade</span><span class="file">AutoConfirma.kt</span></div>
+      </div>
+      <div class="outs">
+        <div class="out you"><small>te chama</small>Sem a confirmação automática: um toque em Update por pacote que mudou.</div>
+        <div class="out stop"><small>erro</small>Se o WhatsApp recusar o pacote, a mensagem aparece na tela e no Diagnóstico.</div>
+      </div>
+    </li>
+    <li class="st" data-k="you">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">7</span><h3>Voltar e enviar</h3><span class="tag you">você</span></div>
+        <p>O app abre o WhatsApp de volta. Você toca na aba de figurinhas, no ícone <b>🔍</b> (ou GIF) e envia. Chega como <b>figurinha</b>, animada se for animada.</p>
+      </div>
+      <div class="outs"><div class="out ok"><small>deu certo</small>Testado em 27/11: pinguim, dinheiro e caralho trocaram o pacote na hora.</div></div>
+    </li>
+  </ol>
+</section>
+
+<section aria-labelledby="tg">
+  <h2 id="tg">O que aparece no WhatsApp</h2>
+  <div class="tgrid">
+    <div class="bubble"><span class="k">🔍 Busca</span><span>Tap to send a sticker</span><span class="q">"Updating this pack may add, remove or reorder stickers."</span><div class="btns"><span>Update</span><span>Remove</span></div></div>
+    <div class="bubble"><span class="k">Aviso rápido</span><span>🔍 Busca GIF has been added to WhatsApp</span></div>
+    <div class="bubble"><span class="k">Aba de figurinhas</span><span>Ícone verde 🔍 = Busca</span><span>Ícone roxo GIF = Busca GIF</span><span class="q">Pontinhos cinza = figurinha vazia de enchimento</span></div>
+  </div>
+  <p class="note">Textos copiados dos seus prints de 27/11 (WhatsApp em inglês). Nunca toque em Remove: apaga o pacote e é preciso adicionar de novo nos ajustes.</p>
+</section>
+
+<section aria-labelledby="regras">
+  <h2 id="regras">Como a busca decide</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>O que acontece</th><th>Peso</th><th>Exemplo com suas favoritas</th></tr></thead>
+    <tbody>
+      <tr><td>Busca aparece no texto da figurinha</td><td><span class="pill ok">mais forte</span></td><td>"aura" acha "kd sua aura" e "roubando aura"</td></tr>
+      <tr><td>Busca aparece na descrição</td><td><span class="pill ok">forte</span></td><td>"esqueleto" acha os esqueletos dançando</td></tr>
+      <tr><td>Igual sem espaço ou sem "a/de"</td><td><span class="pill ok">forte</span></td><td>"calaboca" acha "faz silêncio aí"</td></tr>
+      <tr><td>Palavra parecida (erro de digitação)</td><td><span class="pill ok">médio</span></td><td>"esqueletu" acha o esqueleto</td></tr>
+      <tr><td>Sinônimo do dicionário</td><td><span class="pill ok">médio</span></td><td>"grana" acha dinheiro, "segunda feira" acha trabalho</td></tr>
+      <tr><td>Sentido parecido (vetores de IA)</td><td><span class="pill you">soma por semelhança</span></td><td>"chefe chato" acha executivo de terno; "estou rico" acha gato com dólares</td></tr>
+      <tr><td>Muito abaixo do melhor resultado</td><td><span class="pill stop">fora</span></td><td>Corta o que tiver menos de 15% da nota do primeiro</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="tools">
+  <h2 id="tools">Ferramentas usadas</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Ferramenta</th><th>Pra que serve aqui</th><th>O que você precisa ter</th></tr></thead>
+    <tbody>
+      <tr><td>App Android (Kotlin + Jetpack Compose)</td><td>Busca, telas, pacotes, atualizador</td><td>Android 9 ou mais novo</td></tr>
+      <tr><td>API de pacotes do WhatsApp</td><td>Única forma oficial de figurinha chegar como figurinha</td><td>WhatsApp normal (não Business)</td></tr>
+      <tr><td>Serviço de acessibilidade</td><td>Tocar em "Update" sozinho</td><td>Ligar uma vez; no Android 13+ liberar "configurações restritas"</td></tr>
+      <tr><td>GitHub Actions</td><td>Compila o APK, gera os vetores, testa as telas num emulador</td><td>Repositório <code>rfaelvitor/figurinhas-busca</code> (público)</td></tr>
+      <tr><td>Modelo de IA multilíngue (MiniLM)</td><td>Gera os vetores de sentido de 40 mil palavras, só no build</td><td>Nada; roda no GitHub</td></tr>
+      <tr><td>WhatsApp Web no Chrome</td><td>Foi de onde saíram as 257 favoritas</td><td>Chrome do notebook com a extensão Claude</td></tr>
+      <tr><td>Claude</td><td>Descreveu as favoritas e mantém o projeto</td><td>Conta compartilhada</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="como">
+  <h2 id="como">Como foi construído</h2>
+  <p class="sub">A ordem em que as coisas foram descobertas e feitas. Os primeiros passos ficam recolhidos; os mais recentes aparecem abertos.</p>
+  <details class="hist">
+    <summary>Ver os 10 primeiros passos</summary>
+    <ol class="build">
+      <li><div><b>Ideia e primeira análise (26/11)</b><p>WhatsApp não aceita plugins e versões modificadas arriscam banir a conta. A primeira ideia foi um teclado com busca.</p></div></li>
+      <li><div><b>Teclado descartado</b><p>Pelo teclado, figurinha animada chega parada no primeiro quadro. Como você precisa das animadas, a saída virou o pacote de figurinhas oficial.</p></div></li>
+      <li><div><b>Tentativa pelo backup com chave de 64 dígitos</b><p>Você ativou o backup criptografado, mas o backup do celular não traz o banco das figurinhas e continua <code>.crypt14</code>. Também vimos que a pasta pública parou de receber figurinhas em novembro de 2024. Caminho descartado.</p><div class="meta"><span class="tool">wa-crypt-tools</span><span class="tool">CrossDevice</span></div></div></li>
+      <li><div><b>WhatsApp Web e um erro sério</b><p>O navegador do app do Claude é recusado pelo WhatsApp Web. Usei o Chrome com a extensão que estava conectado sem confirmar de quem era: era o da Gi. Abri conversas dela e baixei as 22 favoritas dela. Desde então, sempre confirmo o navegador antes.</p><div class="meta"><span class="tool">Claude in Chrome</span></div></div></li>
+      <li><div><b>257 favoritas extraídas</b><p>No seu Chrome, a aba Favoritas só apareceu depois de você favoritar uma figurinha nova (forçou a sincronização). Saíram 257 arquivos originais, 102 animados.</p><div class="meta"><span class="tool">WhatsApp Web</span><span class="tool">JavaScript</span></div></div></li>
+      <li><div><b>Descrição das figurinhas</b><p>Montei folhas de contato com 24 figurinhas cada e escrevi texto e palavras-chave de todas. A #177 não tinha baixado no Web.</p><div class="meta"><span class="tool">Claude</span><span class="file">idx.txt</span></div></div></li>
+      <li><div><b>Teste do Compartilhar</b><p>Mandar o .webp pelo Compartilhar chega como foto e sem animação. Descartado; o pacote virou o único caminho.</p></div></li>
+      <li><div><b>App da versão 1 compilado na nuvem</b><p>Criei o repositório pelo seu GitHub (a API não deixava) e o GitHub Actions passou a gerar o APK. Converti as favoritas pro formato de pacote (512x512, limites de tamanho).</p><div class="meta"><span class="tool">GitHub Actions</span><span class="file">tools/preparar_pacote.py</span></div></div></li>
+      <li><div><b>O pacote não atualizava</b><p>A tela de diagnóstico mostrou que o WhatsApp lia a versão nova mas nunca pedia as figurinhas de novo. Na versão 3, pedir pra "adicionar" o pacote outra vez fez ele recarregar. Teste 2 aprovado.</p><div class="meta"><span class="file">diag.log</span></div></div></li>
+      <li><div><b>Atualizador e repositório público</b><p>O app passou a se atualizar pelas versões do GitHub, com um toque de confirmação do Android. Você deixou o repositório público no PC.</p><div class="meta"><span class="file">Updater.kt</span></div></div></li>
+    </ol>
+  </details>
+  <ol class="build" style="counter-reset:b 10">
+    <li><div><b>Uso diário (versões 5 e 6)</b><p>Envio em um toque, atalho na barra, dicionário de sinônimos, figurinhas vazias de enchimento e ícone próprio.</p></div></li>
+    <li><div><b>Visual novo (versões 7 e 8)</b><p>Interface em Jetpack Compose com cores do ícone, configuração guiada pra usuário novo e ajustes na engrenagem.</p></div></li>
+    <li><div><b>Seu retorno de 27/11, 11h39</b><p>Problemas apontados e o que foi feito:</p><ul><li>App sumia dos recentes: era uma configuração minha (<code>excludeFromRecents</code>); removida.</li><li>Configuração inicial: páginas com setas e deslize, letras maiores, menos texto, exemplos que trocam sozinhos.</li><li>Histórico com Limpar e sugestões tiradas das suas figurinhas.</li><li>Confirmação automática do Update via acessibilidade.</li><li>Nova tela "Me ajuda a responder" (cole a conversa e escolha o clima).</li></ul></div></li>
+    <li><div><b>Busca por sentido com IA</b><p>No build, um modelo de IA multilíngue gera vetores de 40 mil palavras em português (6,8 MB no app). Calibrei com as suas 256: "chefe chato", "estou rico", "festa" e "medo" acham o que fazem sentido mesmo sem palavra em comum. Palavras comuns (hoje, bora) pesam menos.</p><div class="meta"><span class="tool">sentence-transformers</span><span class="file">tools/gerar_vetores.py</span></div></div></li>
+    <li><div><b>Testes no emulador</b><p>Cada versão agora roda num emulador Android no GitHub com figurinhas de teste, e 13 prints das telas ficam anexados na versão. Primeira rodada: todas as telas abriram, sem nenhum erro.</p><div class="meta"><span class="tool">android-emulator-runner</span><span class="file">tools/telas.sh</span></div></div></li>
+  </ol>
+</section>
+
+<section aria-labelledby="docs">
+  <h2 id="docs">Documentação</h2>
+  <div class="docs">
+    <div class="panel"><h3>Estrutura do projeto</h3>
+<pre class="tree">figurinhas-busca/
+├─ app/src/main/java/br/rafael/figurinhas/
+│  ├─ MainActivity.kt   <span># estado, envio, importação</span>
+│  ├─ Ui.kt             <span># todas as telas</span>
+│  ├─ Store.kt          <span># busca, sugestão, pacotes</span>
+│  ├─ Vetores.kt        <span># sentido por IA</span>
+│  ├─ StickerProvider.kt <span># entrega os pacotes ao WhatsApp</span>
+│  ├─ AutoConfirma.kt   <span># toca em Update sozinho</span>
+│  ├─ Updater.kt        <span># atualização pelo GitHub</span>
+│  └─ BuscaTile.kt      <span># atalho na barra</span>
+├─ app/src/main/assets/sinonimos.json
+├─ tools/
+│  ├─ preparar_pacote.py <span># gera o dados.zip</span>
+│  ├─ gerar_vetores.py   <span># vetores de IA (no build)</span>
+│  ├─ demo_dados.py      <span># figurinhas de teste</span>
+│  └─ telas.sh           <span># prints no emulador</span>
+└─ .github/workflows/build.yml</pre></div>
+    <div class="panel"><h3>Como sai uma versão nova</h3>
+      <dl class="kv"><dt>1</dt><dd>Código vai pra <code>main</code> no GitHub</dd><dt>2</dt><dd>Actions gera vetores, compila e publica <code>build-N</code></dd><dt>3</dt><dd>Emulador tira os prints e anexa <code>telas.zip</code></dd><dt>4</dt><dd>No app aparece "Tem uma versão nova", você toca em Atualizar</dd></dl></div>
+    <div class="panel"><h3>Configuração</h3>
+      <dl class="kv"><dt>assinatura.jks</dt><dd>chave fixa, pra cada versão instalar por cima</dd><dt>GITHUB_RUN_NUMBER</dt><dd>vira o número da versão</dd><dt>SEM_MIN / SEM_PESO</dt><dd>calibragem da busca por sentido em <code>Store.kt</code></dd><dt>sinonimos.json</dt><dd>grupos de palavras e rótulos das sugestões</dd></dl></div>
+    <div class="panel"><h3>Onde ficam os dados</h3>
+      <dl class="kv"><dt>Celular</dt><dd>figurinhas, <code>indice.json</code>, <code>packs.json</code>, <code>diag.log</code> (150 linhas) dentro do app; somem se desinstalar</dd><dt>Notebook</dt><dd><code>IdeaProjects\figurinhas-busca</code>: <code>dados.zip</code>, <code>indice.json</code>, scripts</dd><dt>GitHub</dt><dd>só o código; nenhuma figurinha</dd></dl></div>
+  </div>
+  <h3>Quando algo der errado</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Sintoma</th><th>Causa provável</th><th>O que fazer</th></tr></thead>
+    <tbody>
+      <tr><td>Pacote 🔍 não muda</td><td>WhatsApp não recarregou</td><td>Engrenagem → Adicionar pacotes; ou confira o Diagnóstico</td></tr>
+      <tr><td>Janela Update aparece toda vez</td><td>Confirmação automática desligada ou cortada pelo MIUI</td><td>Ligar em Ajustes; liberar o app na economia de bateria</td></tr>
+      <tr><td>Pacote sumiu do WhatsApp</td><td>Tocou em Remove</td><td>Engrenagem → Adicionar pacotes</td></tr>
+      <tr><td>Busca sem resultado</td><td>Palavra fora da descrição e do vocabulário</td><td>Tente o que a figurinha mostra ou sente; me mande a busca pra eu ajustar</td></tr>
+      <tr><td>"App não instalado"</td><td>Versão com outra assinatura (só até a v1)</td><td>Desinstalar e instalar de novo</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="split">
+  <h2 id="split">O que é automático e o que fica com você</h2>
+  <div class="split">
+    <div class="panel a"><h3>O app faz</h3><ul><li>Busca por texto, sinônimo e sentido</li><li>Sugere figurinha pelo clima da conversa</li><li>Monta e atualiza os pacotes</li><li>Toca em Update (se ligado)</li><li>Volta pro WhatsApp</li><li>Avisa e instala versão nova</li></ul></div>
+    <div class="panel y"><h3>Fica com você</h3><ul><li>Abrir a busca e escolher a figurinha</li><li>Enviar pela aba 🔍</li><li>Confirmar atualização do app (exigência do Android)</li><li>Por enquanto: trazer favoritas novas por arquivo</li></ul></div>
+  </div>
+</section>
+
+<section aria-labelledby="testes">
+  <h2 id="testes">Plano de testes</h2>
+  <p class="sub">O emulador testa as telas a cada versão, sem você. O que envolve o WhatsApp só dá pra testar no seu celular, porque o emulador não tem o seu WhatsApp.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>#</th><th>Cenário</th><th>Como provocar</th><th>O que deve acontecer</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td>Favoritas pelo backup</td><td>Backup com chave de 64 dígitos</td><td>Achar o banco das figurinhas</td><td><span class="pill stop">falhou</span></td></tr>
+      <tr><td>T2</td><td>Pacote muda com a busca</td><td>Buscar e mandar</td><td>Pacote 🔍 troca na hora</td><td><span class="pill ok">ok (v3)</span></td></tr>
+      <tr><td>T3</td><td>Compartilhar como figurinha</td><td>Compartilhar .webp pro WhatsApp</td><td>Chegar como figurinha</td><td><span class="pill stop">falhou</span></td></tr>
+      <tr><td>T4</td><td>Animadas no pacote</td><td>Buscar uma GIF e mandar</td><td>Chega animada</td><td><span class="pill ok">ok</span></td></tr>
+      <tr><td>T5</td><td>App nos recentes</td><td>Sair do app duas vezes</td><td>Continua nos recentes</td><td><span class="pill you">pendente</span></td></tr>
+      <tr><td>T6</td><td>Confirmação automática</td><td>Ligar e mandar uma figurinha</td><td>Update tocado sozinho</td><td><span class="pill you">pendente</span></td></tr>
+      <tr><td>T7</td><td>Atualizar pelo app</td><td>Abrir o app com versão nova publicada</td><td>Faixa aparece e instala</td><td><span class="pill you">pendente</span></td></tr>
+      <tr><td>T8</td><td>Telas no emulador</td><td>Automático a cada versão</td><td>13 prints sem erro</td><td><span class="pill ok">ok (v11)</span></td></tr>
+      <tr><td>T9</td><td>Me ajuda a responder</td><td>Colar uma conversa real</td><td>Sugestões que fazem sentido</td><td><span class="pill you">pendente</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="avaliacao">
+  <h2 id="avaliacao">Avaliação crítica</h2>
+  <p class="sub">Uma leitura honesta de onde o projeto está, do que esperar e do que pode estar passando despercebido. Feita em 27/11, às 12h00. Vamos revisar e discutir juntos depois dos testes T5 a T9 no seu celular.</p>
+  <div class="docs">
+    <div class="panel"><h3>Como estamos</h3>
+      <p><b>O núcleo funciona de verdade, com as suas figurinhas reais.</b> Busca, pacotes e animadas foram testados no seu celular em 27/11. A busca por sentido e a tela de sugestão foram calibradas com as suas 256, mas só no meu lado.</p>
+      <p><b>Para outra pessoa, o app ainda não funciona sozinho.</b> As descrições foram feitas por mim, à mão, e as favoritas vieram de uma extração manual. Sem a sincronização, um usuário novo não tem como começar.</p>
+      <p><b>O que quebrou no contato com o mundo real:</b> backup sem figurinhas, compartilhar virando foto, pacote que não recarregava e a janela Update. Tudo isso é comportamento do WhatsApp que pode mudar sem aviso; o app depende de detalhes não documentados.</p></div>
+    <div class="panel"><h3>Expectativas realistas</h3>
+      <ul class="lista">
+        <li><b>Achar uma figurinha:</b> poucos segundos, contra o scroll de antes.</li>
+        <li><b>Mandar:</b> uns 4 toques (atalho, digitar, tocar, enviar), mais 1 ou 2 "Update" se a confirmação automática não estiver ligada.</li>
+        <li><b>Acerto da busca:</b> alto quando você lembra do texto ou do bicho; médio para sentimentos e situações. Estimativa minha, sem medição ainda.</li>
+        <li><b>Favoritas novas:</b> não aparecem até a sincronização existir. Hoje, só refazendo o processo comigo.</li>
+      </ul></div>
+  </div>
+  <h3>No radar</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Ponto</th><th>Por que importa</th><th>O que sugiro</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1. Sincronização das favoritas</td><td>Sem ela o app envelhece a cada figurinha nova e não serve pra outra pessoa</td><td>Próxima fase: WhatsApp Web escondido no app + leitura de texto e etiquetas no próprio celular</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>2. Dependência de comportamento do WhatsApp</td><td>Recarregar pacote e janela Update não são documentados</td><td>Manter o Diagnóstico e o teste T2 depois de cada atualização grande do WhatsApp</td><td><span class="pill ok">decidido</span></td></tr>
+      <tr><td>3. Acessibilidade</td><td>Permissão forte; o MIUI pode desligar; Android avisa como "restrita"</td><td>Deixar opcional e restrita ao WhatsApp, nos segundos depois do envio (já é assim)</td><td><span class="pill ok">feito</span></td></tr>
+      <tr><td>4. Automação do WhatsApp Web</td><td>Zona cinzenta nos termos do WhatsApp, mesmo só lendo</td><td>Só leitura, sob demanda, nunca enviar nada pelo Web</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>5. Repositório público com a chave</td><td>Alguém poderia assinar um APK "atualizado"</td><td>Mover a chave pra um segredo do GitHub</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>6. Dados de outra pessoa</td><td>O incidente com o Chrome da Gi</td><td>Confirmar o navegador antes de qualquer ação; ela foi avisada por você</td><td><span class="pill ok">decidido</span></td></tr>
+      <tr><td>7. Figurinhas passaram pela IA</td><td>Algumas têm fotos de pessoas</td><td>Nas próximas, descrever no próprio celular, sem mandar imagem pra fora</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>8. O que não é medido</td><td>Não sei quais buscas falham</td><td>Registrar no Diagnóstico as buscas sem resultado (só no celular)</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>9. Tamanho do app</td><td>~27 MB, sem compactação</td><td>Ligar o R8 depois que tudo estabilizar</td><td><span class="pill you">a discutir</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="hoje">
+  <h2 id="hoje">Situação hoje</h2>
+  <ul class="checklist">
+    <li class="done"><span class="ic">✓</span><div><b>Busca, pacotes e animadas funcionando</b><br><span>testado no seu celular em 27/11</span></div></li>
+    <li class="done"><span class="ic">✓</span><div><b>Configuração guiada, histórico, sugestões e "Me ajuda a responder"</b><br><span>conferidos nos prints do emulador</span></div></li>
+    <li class="done"><span class="ic">✓</span><div><b>Busca por sentido com IA</b><br><span>calibrada com as suas 256 favoritas</span></div></li>
+    <li class="todo"><span class="ic"></span><div><b>Você testar T5 a T9</b><br><span>recentes, confirmação automática, atualizar pelo app, sugestão com conversa real</span></div></li>
+    <li class="todo"><span class="ic"></span><div><b>Revisar esta avaliação juntos</b><br><span>depois dos testes</span></div></li>
+    <li class="todo"><span class="ic"></span><div><b>Fase 3: sincronização sozinha</b><br><span>começa depois dos testes; precisa do seu número pra conectar o WhatsApp Web dentro do app</span></div></li>
+  </ul>
+</section>
+
+<section aria-labelledby="melhorias">
+  <h2 id="melhorias">Ideias de melhoria</h2>
+  <p class="sub">Em ordem de prioridade.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Ideia</th><th>Por quê</th><th>Esforço</th></tr></thead>
+    <tbody>
+      <tr><td>Sincronização das favoritas</td><td>Figurinha nova ou apagada aparece no app sozinha</td><td><span class="pill you">grande</span></td></tr>
+      <tr><td>Descrever figurinhas no celular</td><td>Usuário novo sem depender de mim; imagens não saem do celular</td><td><span class="pill you">médio</span></td></tr>
+      <tr><td>Registrar buscas sem resultado</td><td>Saber o que melhorar no dicionário</td><td><span class="pill ok">pequeno</span></td></tr>
+      <tr><td>Chave de assinatura em segredo</td><td>Fecha o risco do repositório público</td><td><span class="pill ok">pequeno</span></td></tr>
+      <tr><td>Compactar o app (R8)</td><td>Download e atualização mais leves</td><td><span class="pill ok">pequeno</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+</div>
+<script>
+(function(){
+  var bar=document.querySelector('.minibar'),toc=document.getElementById('sumario');
+  if(!bar||!toc||!('IntersectionObserver' in window))return;
+  var links={};bar.querySelectorAll('a[href^="#"]').forEach(function(a){links[a.getAttribute('href').slice(1)]=a});
+  new IntersectionObserver(function(e){bar.classList.toggle('on',!e[0].isIntersecting&&e[0].boundingClientRect.top<0)}).observe(toc);
+  var atual=null;
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;var id=e.target.querySelector('h2')&&e.target.querySelector('h2').id;
+    if(!id||!links[id]||id===atual)return;if(atual&&links[atual])links[atual].classList.remove('ativo');atual=id;var a=links[id];a.classList.add('ativo');
+    var box=a.parentNode;box.scrollTo({left:a.offsetLeft-box.clientWidth/2+a.clientWidth/2,behavior:'smooth'});});},{rootMargin:'-35% 0px -60% 0px'});
+  document.querySelectorAll('section').forEach(function(s){io.observe(s)});
+})();
+</script><script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script><script>mermaid.initialize({startOnLoad:true});</script>
+</body></html>
