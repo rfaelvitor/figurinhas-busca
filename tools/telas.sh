@@ -14,15 +14,15 @@ abrir() { adb shell am start -S -W -n $A "$@"; }
 
 abrir --es demo_importar demo.zip --es demo_tela configurar --ei demo_passo 0; foto 01_ola 4
 for p in 1 2 3 4; do abrir --es demo_tela configurar --ei demo_passo $p; foto 0$((p+1))_passo$p 3; done
-abrir --es demo_tela busca --es demo_recentes "bom dia,pix,gato"; foto 06_busca_inicio 4
-abrir --es demo_tela busca --es demo_q "gato comendo"; foto 07_busca_gato_comendo 4
-abrir --es demo_tela busca --es demo_q "to cansado"; foto 08_busca_cansado 4
-abrir --es demo_tela busca --es demo_q "xyzqw"; foto 09_sem_resultado 4
+abrir --es demo_tela busca --es demo_recentes bom_dia,pix,gato; foto 06_busca_inicio 4
+abrir --es demo_tela busca --es demo_q gato_comendo; foto 07_busca_gato_comendo 4
+abrir --es demo_tela busca --es demo_q to_cansado; foto 08_busca_cansado 4
+abrir --es demo_tela busca --es demo_q xyzqw; foto 09_sem_resultado 4
 abrir --es demo_tela busca --ez demo_ajustes true; foto 10_ajustes 4
 adb shell cmd uimode night yes
 abrir --es demo_tela configurar --ei demo_passo 0; foto 11_ola_escuro 4
-abrir --es demo_tela busca --es demo_q "dinheiro"; foto 12_busca_escuro 4
+abrir --es demo_tela busca --es demo_q dinheiro; foto 12_busca_escuro 4
 adb shell cmd uimode night no
-abrir --es demo_tela sugerir --es demo_texto "nossa que dia incrivel no trabalho hoje, adorei ficar 3 horas em reuniao"; foto 13_sugerir 5
+abrir --es demo_tela sugerir --es demo_texto nossa_que_dia_incrivel_no_trabalho_hoje_adorei_ficar_3_horas_em_reuniao; foto 13_sugerir 5
 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true

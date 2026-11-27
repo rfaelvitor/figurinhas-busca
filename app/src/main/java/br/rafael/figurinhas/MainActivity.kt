@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(b)
         enableEdgeToEdge()
         intent.getStringExtra("demo_importar")?.let { importarDe(File(filesDir, it).inputStream()) }
-        intent.getStringExtra("demo_recentes")?.split(",")?.reversed()?.forEach { Prefs.guardarBusca(this, it) }
+        intent.getStringExtra("demo_recentes")?.replace('_', ' ')?.split(",")?.reversed()?.forEach { Prefs.guardarBusca(this, it) }
         total.intValue = Store.figs(this).size
         recentes.value = Prefs.recentes(this)
         sugestoes.value = Store.sugestoes(this)
@@ -67,8 +67,8 @@ class MainActivity : ComponentActivity() {
         tela.value = if (Prefs.configurado(this)) Tela.Busca else Tela.Configurar
         when (intent.getStringExtra("demo_tela")) {
             "configurar" -> { tela.value = Tela.Configurar; demoPasso = intent.getIntExtra("demo_passo", 0) }
-            "sugerir" -> { tela.value = Tela.Sugerir; demoTexto = intent.getStringExtra("demo_texto") ?: "" }
-            "busca" -> { tela.value = Tela.Busca; demoBusca = intent.getStringExtra("demo_q") ?: ""; demoAjustes = intent.getBooleanExtra("demo_ajustes", false) }
+            "sugerir" -> { tela.value = Tela.Sugerir; demoTexto = intent.getStringExtra("demo_texto")?.replace('_', ' ') ?: "" }
+            "busca" -> { tela.value = Tela.Busca; demoBusca = intent.getStringExtra("demo_q")?.replace('_', ' ') ?: ""; demoAjustes = intent.getBooleanExtra("demo_ajustes", false) }
         }
         setContent { App(this) }
         if (intent.getStringExtra("demo_tela") == null) io.execute { Updater.buscarNova(this)?.let { nova.value = it } }
