@@ -36,8 +36,10 @@ class Sync(private val a: Activity) {
     private var falhas = 0
     private var modo = ""
 
+    val web: WebView by lazy { criarWeb() }
+
     @SuppressLint("SetJavaScriptEnabled")
-    val web: WebView by lazy {
+    private fun criarWeb(): WebView =
         WebView(a).apply {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.javaScriptEnabled = true
@@ -60,7 +62,6 @@ class Sync(private val a: Activity) {
                 }
             }
         }
-    }
 
     fun soltar() { (web.parent as? ViewGroup)?.removeView(web) }
 
