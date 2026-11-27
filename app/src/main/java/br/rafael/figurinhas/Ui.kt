@@ -295,15 +295,22 @@ private fun EscolhaSom(a: MainActivity, q: String, res: List<Fig>, f: Fig) {
                         Text(c, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = outra, onValueChange = { outra = it }, singleLine = true,
-                    placeholder = { Text("Outra conversa: nome do contato") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (outra.isNotBlank()) a.mandarComSom(f, outra.trim()) }),
-                    trailingIcon = { if (outra.isNotBlank()) TextButton(onClick = { a.mandarComSom(f, outra.trim()) }) { Text("Mandar") } }
-                )
+                Spacer(Modifier.height(10.dp))
+                var digitar by remember { mutableStateOf(false) }
+                if (!digitar) {
+                    TextButton(onClick = { digitar = true }) { Text("Outra conversa…", fontSize = 16.sp) }
+                } else {
+                    val foco = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { foco.requestFocus() }
+                    OutlinedTextField(
+                        value = outra, onValueChange = { outra = it }, singleLine = true,
+                        placeholder = { Text("Nome do contato ou grupo") },
+                        modifier = Modifier.fillMaxWidth().focusRequester(foco),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (outra.isNotBlank()) a.mandarComSom(f, outra.trim()) }),
+                        trailingIcon = { if (outra.isNotBlank()) TextButton(onClick = { a.mandarComSom(f, outra.trim()) }) { Text("Mandar") } }
+                    )
+                }
             }
         }
     }

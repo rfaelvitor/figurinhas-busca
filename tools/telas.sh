@@ -27,8 +27,8 @@ adb shell cmd uimode night no
 abrir --es demo_tela busca --es demo_sync copiando; foto 16_sync_copiando 4
 abrir --es demo_tela busca --es demo_sync esperando; foto 17_sync_esperando 4
 abrir --es demo_tela busca --es demo_sync fim; foto 18_sync_fim 2
-abrir --es demo_tela busca --ez demo_som true; foto 19_figurinha_com_som 4
 abrir --es demo_tela sugerir --es demo_texto nossa_que_dia_incrivel_no_trabalho_hoje_adorei_ficar_3_horas_em_reuniao; foto 13_sugerir 5
+abrir --es demo_tela busca --ez demo_som true; foto 19_figurinha_com_som 4
 timeout 20 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
 timeout 20 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
 timeout 20 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
