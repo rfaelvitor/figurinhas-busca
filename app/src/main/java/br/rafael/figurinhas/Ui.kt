@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -183,6 +184,17 @@ private fun PassoOla() {
         AnimatedContent(targetState = EXEMPLOS[i], label = "exemplo",
             transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) }) { t ->
             Text(t, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+    Spacer(Modifier.height(36.dp))
+    // tres "figurinhas" de enfeite pra dar o clima
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        listOf(Triple("😹", -8f, Color(0xFFFFC83D)), Triple("💸", 5f, Color(0xFF9B7BEA)), Triple("😴", -3f, Color(0xFF7BD3B5))).forEach { (e, giro, cor) ->
+            Box(
+                Modifier.padding(horizontal = 8.dp).size(84.dp).graphicsLayer { rotationZ = giro }
+                    .clip(RoundedCornerShape(22.dp)).background(cor),
+                contentAlignment = Alignment.Center
+            ) { Text(e, fontSize = 44.sp) }
         }
     }
 }

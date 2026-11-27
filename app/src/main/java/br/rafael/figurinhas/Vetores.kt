@@ -59,7 +59,9 @@ object Vetores {
         for (t in texto.split(" ")) {
             if (t.length < 2 || t in ignorar) continue
             val i = achar(t) ?: continue
-            val v = linha(i); for (j in 0 until dim) soma[j] += v[j]; k++
+            // palavra rara pesa mais que palavra comum (hoje, bora, vamo)
+            val w = (kotlin.math.ln(i + 2.0) / kotlin.math.ln(palavras.size.toDouble())).toFloat()
+            val v = linha(i); for (j in 0 until dim) soma[j] += v[j] * w; k++
         }
         if (k == 0) return null
         var n = 0f; for (v in soma) n += v * v

@@ -29,6 +29,7 @@ almoco
 almoço
 alongamento
 alto
+aluguel
 amarelo
 amarrado
 amassando
@@ -64,12 +65,15 @@ audio
 aura
 autorizo
 aviso
+azar
 azul
+babado
 babando
 backrooms
 baixada
 baixinho
 baixo
+balada
 balança
 baloes
 banana
@@ -100,6 +104,7 @@ boca
 bocas
 bochechas
 boco
+boleto
 bolo
 bolso
 bom
@@ -117,6 +122,7 @@ brigando
 brincadeira
 brincar
 brinquedo
+bugou
 bull
 burro
 cabelo
@@ -178,6 +184,7 @@ chimpanze
 chocado
 chorando
 chorar
+chorei
 chupando
 churrasco
 chuva
@@ -222,6 +229,7 @@ corte
 costas
 criou
 cristiano
+crush
 cruzadas
 cueca
 cuida
@@ -252,6 +260,7 @@ despapoi
 destruida
 deus
 dia
+dieta
 dificil
 dinheiro
 dinossauro
@@ -326,6 +335,7 @@ feijao
 feira
 felicidade
 feliz
+feriado
 ferramenta
 festa
 fez
@@ -363,6 +373,7 @@ fugindo
 fumando
 fundo
 futebol
+férias
 gaivota
 gamer
 garrafa
@@ -433,8 +444,10 @@ juntas
 juntos
 katchau
 kermit
+kkkk
 kkkkkkk
 lacrimejando
+lacrou
 lado
 lagarto
 lagrima
@@ -497,6 +510,7 @@ massagem
 matematicas
 matrix
 mcqueen
+mds
 medo
 melancolico
 melei
@@ -515,7 +529,9 @@ minha
 minion
 miseria
 misery
+mitou
 molhado
+morri
 mortadela
 mossada
 mudança
@@ -526,6 +542,8 @@ musica
 mão
 mãos
 nada
+namorada
+namorado
 nao
 napoleon
 nariz
@@ -615,6 +633,7 @@ pistola
 pitbull
 pix
 pixelado
+pizza
 placa
 planeta
 plankton
@@ -631,6 +650,7 @@ porta
 pose
 positivo
 pou
+pqp
 pra
 prato
 preguiça
@@ -640,6 +660,7 @@ preta
 preto
 proibido
 propaganda
+prova
 pulando
 que
 quebrada
@@ -667,12 +688,15 @@ relaxado
 relaxando
 repasse
 resistindo
+ressaca
 retarded
+reunião
 revolver
 rezando
 rico
 rindo
 riscos
+rolê
 ronaldo
 rosa
 rosnando
@@ -687,6 +711,7 @@ sacola
 safado
 sala
 salsicha
+salário
 salão
 sambando
 sapo
@@ -709,10 +734,12 @@ ser
 serio
 serra
 seu
+sextou
 shiba
 sid
 silencio
 sinal
+slk
 snoopy
 sob
 socando
@@ -720,6 +747,7 @@ soco
 soe
 sofa
 sofrimento
+sogra
 sol
 sombrio
 sonic
@@ -735,6 +763,8 @@ spa
 sua
 supostamente
 surpreso
+surtando
+surtei
 tanto
 tarado
 tatuagem
@@ -747,6 +777,7 @@ terrier
 texto
 the
 timao
+tmj
 tocando
 tomada
 tomate
@@ -758,6 +789,8 @@ trabalhar
 trabalho
 tranquilo
 trataria
+treta
+tretas
 triste
 tristes
 tua
@@ -765,6 +798,8 @@ tudo
 uma
 ursinho
 urso
+vacilo
+vacilão
 vai
 van
 vapo
@@ -783,6 +818,7 @@ voando
 vodka
 vou
 voz
+vsf
 web
 webfude
 whatsapp
@@ -794,4 +830,7 @@ yoga
 yorkshire
 you
 zoando
+zoar
+zoeira
+zuera
 zumbis
