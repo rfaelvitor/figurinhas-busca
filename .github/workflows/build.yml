@@ -45,7 +45,9 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
-          files: figurinhas.apk
+          files: |
+            figurinhas.apk
+            app/src/main/assets/vetores.bin
 
   # abre o app num emulador e tira print de cada tela, pra revisar sem precisar do celular
   telas:
@@ -70,8 +72,11 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: sh tools/telas.sh
-      - uses: actions/upload-artifact@v4
+      - if: always()
+        run: cd telas && zip -q ../telas.zip *
+      # prints ficam junto da versao, pra revisao fora do github
+      - uses: softprops/action-gh-release@v2
         if: always()
         with:
-          name: telas
-          path: telas
+          tag_name: build-${{ github.run_number }}
+          files: telas.zip
