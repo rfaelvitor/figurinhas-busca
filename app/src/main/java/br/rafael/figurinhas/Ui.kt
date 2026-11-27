@@ -419,6 +419,7 @@ private fun Ajustes(a: MainActivity, fechar: () -> Unit) {
             ItemAjuste(Icons.Default.Add, "Adicionar pacotes ao WhatsApp",
                 if (a.pacotesOk.value) "Já adicionados" else "Faltando, toque pra adicionar") { a.adicionarPacotes {} }
             ItemAjuste(Icons.Default.Search, "Atalho nas configurações rápidas", "Abre a busca por cima de qualquer app") { a.pedirAtalho() }
+            ItemAjuste(Icons.Default.PlayArrow, "Ver a configuração inicial", "O passo a passo que um usuário novo vê") { fechar(); a.tela.value = Tela.Configurar }
             ItemAjuste(Icons.Default.Info, "Diagnóstico", "Registro do que o WhatsApp pediu ao app") { diag = a.diagnostico() }
             Text("Versão ${Updater.versaoAtual(ctx)}", Modifier.padding(24.dp, 12.dp), style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
