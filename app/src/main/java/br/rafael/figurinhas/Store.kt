@@ -13,6 +13,7 @@ import java.text.Normalizer
 data class Fig(val n: Int, val arquivo: String, val animada: Boolean, val texto: String, val tags: String) {
     val nt = Store.norm(texto)
     val ng = Store.norm(tags)
+    @Volatile var ne: String? = null
 }
 
 object Store {
@@ -47,6 +48,31 @@ object Store {
 
     fun limparCache() { cache = null }
 
+    @Volatile private var grupos: List<List<String>>? = null
+
+    private fun grupos(ctx: Context): List<List<String>> {
+        grupos?.let { return it }
+        val arr = JSONArray(ctx.assets.open("sinonimos.json").bufferedReader().readText())
+        val g = (0 until arr.length()).map { i -> val a = arr.getJSONArray(i); (0 until a.length()).map { norm(a.getString(it)) } }
+        grupos = g
+        return g
+    }
+
+    // palavras "parentes" das que ja estao na descricao, pra busca por sentido
+    private fun expandir(ctx: Context, f: Fig): String {
+        f.ne?.let { return it }
+        val base = " ${f.nt} ${f.ng} "
+        val extra = grupos(ctx).filter { g -> g.any { base.contains(" $it ") } }.flatten().toSet().joinToString(" ")
+        f.ne = extra
+        return extra
+    }
+
+    private fun alternativas(ctx: Context, t: String): Set<String> {
+        val r = mutableSetOf(t)
+        for (g in grupos(ctx)) if (g.any { it == t || (t.length >= 4 && it.startsWith(t)) || dice(t, it) >= .8 }) r += g
+        return r
+    }
+
     private fun bigr(w: String): Set<String> = (0 until (w.length - 1).coerceAtLeast(0)).map { w.substring(it, it + 2) }.toSet()
     private fun dice(a: String, b: String): Double {
         if (a.length < 2 || b.length < 2) return if (a == b) 1.0 else 0.0
@@ -55,21 +81,25 @@ object Store {
     }
     private fun semLigacao(s: String) = " $s ".replace(Regex(" (a|o|e|de|da|do) "), " ").replace(" ", "")
 
-    private fun nota(f: Fig, q: String): Double {
+    private fun nota(ctx: Context, f: Fig, q: String): Double {
         val tudo = f.nt + " " + f.ng
+        val ext = " " + expandir(ctx, f) + " "
         val palavras = tudo.split(" ")
         var s = 0.0
         if (f.nt.isNotEmpty() && f.nt.contains(q)) s += 120
         else if (tudo.contains(q)) s += 100
         else if (q.length > 3 && semLigacao(tudo).contains(semLigacao(q))) s += 90
-        val termos = q.split(" ").filter { it.length > 1 }
+        else if (ext.contains(" $q ")) s += 60
+        val termos = q.split(" ").filter { it.length > 1 && it !in setOf("de", "da", "do", "um", "uma", "com", "to", "ta", "eu", "me", "que", "pra", "para", "ser", "tipo") }
         var acertos = 0
         for (t in termos) {
             val melhor = palavras.maxOfOrNull { w -> if (w.startsWith(t)) 1.0 else dice(t, w) } ?: 0.0
-            if (melhor >= .7) { acertos++; s += melhor * 20 }
+            if (melhor >= .7) { acertos++; s += melhor * 20; continue }
+            // nao achou a palavra, tenta pelos sinonimos
+            if (alternativas(ctx, t).any { a -> a != t && (" $tudo ".contains(" $a") || ext.contains(" $a ")) }) { acertos++; s += 12 }
         }
         val n = termos.size.coerceAtLeast(1)
-        if (s < 90 && acertos < Math.ceil(n * .66)) return 0.0
+        if (s < 60 && acertos < Math.ceil(n * .66)) return 0.0
         return s
     }
 
@@ -77,32 +107,37 @@ object Store {
         val todas = figs(ctx)
         val q = norm(consulta)
         if (q.isEmpty()) return todas
-        val r = todas.map { it to nota(it, q) }.filter { it.second > 0 }.sortedByDescending { it.second }
+        val r = todas.map { it to nota(ctx, it, q) }.filter { it.second > 0 }.sortedByDescending { it.second }
         val topo = r.firstOrNull()?.second ?: return emptyList()
         return r.filter { it.second >= topo * .1 }.map { it.first }
     }
 
     // coloca os resultados nos dois pacotes e troca a versao pro whatsapp recarregar
-    fun preencherPacotes(ctx: Context, resultado: List<Fig>) {
+    // devolve quais pacotes mudaram
+    fun preencherPacotes(ctx: Context, resultado: List<Fig>): List<String> {
         val todas = figs(ctx)
         fun montar(anim: Boolean): List<String> {
             val r = resultado.filter { it.animada == anim }.take(MAX).map { it.arquivo }.toMutableList()
-            // pacote precisa de no minimo 3
+            // pacote precisa de no minimo 3, completa com figurinha vazia (ou favorita se o zip for antigo)
+            for (k in 1..3) { if (r.size >= 3) break; val v = "vazio_${if (anim) "a" else "s"}$k.webp"; if (File(dir(ctx), v).exists()) r.add(v) }
             for (f in todas) { if (r.size >= 3) break; if (f.animada == anim && f.arquivo !in r) r.add(f.arquivo) }
             return r
         }
         val antigo = lerEstado(ctx)
         val o = JSONObject()
+        val mudou = mutableListOf<String>()
         for ((pack, anim) in listOf(PACK_EST to false, PACK_ANIM to true)) {
             val novo = montar(anim)
             val velho = arquivosDoPacote(ctx, pack)
             // so troca a versao do pacote que mudou
+            if (novo != velho) mudou += pack
             val v = antigo.optInt("v_$pack", 0) + if (novo != velho) 1 else 0
             o.put(pack, JSONArray(novo)).put("v_$pack", v)
         }
         estado(ctx).writeText(o.toString())
         log(ctx, "pacotes atualizados: ${resultado.size} resultados, v_busca=${o.getInt("v_$PACK_EST")} v_gif=${o.getInt("v_$PACK_ANIM")}")
         ctx.contentResolver.notifyChange(android.net.Uri.parse("content://$AUTH/metadata"), null)
+        return mudou
     }
 
     fun versao(ctx: Context, pack: String) = lerEstado(ctx).optInt("v_$pack", 0)
