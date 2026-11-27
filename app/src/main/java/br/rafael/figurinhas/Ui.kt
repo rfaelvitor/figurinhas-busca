@@ -674,6 +674,10 @@ private fun Busca(a: MainActivity) {
                 Button(onClick = { detalhe = null; a.enviar(q, if (q.isBlank()) listOf(f) else res, f) }, Modifier.fillMaxWidth().height(52.dp)) {
                     Text("Mandar no WhatsApp")
                 }
+                // se o app ainda nao sabe que ela tem som, da pra pedir o envio com som daqui
+                TextButton(onClick = { detalhe = null; a.escolhaSom.value = Triple(q, if (q.isBlank()) listOf(f) else res, f) }) {
+                    Text("🔊  Ela tem som? Mandar com som")
+                }
             }
         }
     }
