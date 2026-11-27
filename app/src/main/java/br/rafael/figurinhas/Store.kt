@@ -70,6 +70,43 @@ object Store {
     fun temSom(ctx: Context, f: Fig) = f.id.isNotBlank() && f.id in sons(ctx)
     fun audio(ctx: Context, f: Fig): File? = File(dir(ctx), "${f.id}.som").takeIf { f.id.isNotBlank() && it.exists() }
 
+    // lixeira: o que a sincronizacao tira nunca e apagado de vez
+    private fun lixeira(ctx: Context) = File(ctx.filesDir, "lixeira").apply { mkdirs() }
+    @Synchronized fun paraLixeira(ctx: Context, figs: List<Fig>) {
+        val arq = File(lixeira(ctx), "itens.json")
+        val arr = if (arq.exists()) JSONArray(arq.readText()) else JSONArray()
+        for (f in figs) {
+            File(dir(ctx), f.arquivo).takeIf { it.exists() }?.renameTo(File(lixeira(ctx), f.arquivo))
+            arr.put(JSONObject().put("arquivo", f.arquivo).put("animada", f.animada).put("texto", f.texto).put("tags", f.tags).put("id", f.id).put("origem", f.origem))
+        }
+        arq.writeText(arr.toString())
+    }
+    fun naLixeira(ctx: Context): Int = File(lixeira(ctx), "itens.json").takeIf { it.exists() }?.let { JSONArray(it.readText()).length() } ?: 0
+    @Synchronized fun restaurarLixeira(ctx: Context): Int {
+        val arq = File(lixeira(ctx), "itens.json"); if (!arq.exists()) return 0
+        val arr = JSONArray(arq.readText())
+        val lista = figs(ctx).toMutableList()
+        var prox = (lista.maxOfOrNull { it.n } ?: 0) + 1
+        var volta = 0
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val nome = o.getString("arquivo")
+            val src = File(lixeira(ctx), nome)
+            if (!src.exists() || lista.any { it.arquivo == nome }) continue
+            src.renameTo(File(dir(ctx), nome))
+            lista += Fig(prox++, nome, o.optBoolean("animada"), o.optString("texto"), o.optString("tags"), o.optString("id"), o.optString("origem"))
+            volta++
+        }
+        // quem voltou nao pode sair de novo so por nao estar no web
+        File(ctx.filesDir, "vistos_no_web.txt").takeIf { it.exists() }?.let { v ->
+            val ids = (0 until arr.length()).map { arr.getJSONObject(it).optString("id") }.toSet()
+            v.writeText(v.readLines().filter { it !in ids }.joinToString("\n"))
+        }
+        salvarIndice(ctx, lista)
+        arq.delete()
+        return volta
+    }
+
     // posicao na aba de favoritas do whatsapp (1 = primeira), pra achar rapido as que tem som
     fun posicaoFavorita(ctx: Context, f: Fig): Int {
         val arq = File(ctx.filesDir, "ordem_favoritas.txt")

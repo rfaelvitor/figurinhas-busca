@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
             pedirTranscricao()
         }
         conectado.value = Prefs.conectado(this)
+        lixeira.intValue = Store.naLixeira(this)
         total.intValue = Store.figs(this).size
         recentes.value = Prefs.recentes(this)
         sugestoes.value = Store.INTENCOES.keys.toList()
@@ -136,6 +137,7 @@ class MainActivity : ComponentActivity() {
         sugestoes.value = Store.INTENCOES.keys.toList()
         semResultado.value = Prefs.semResultado(this)
         conectado.value = Prefs.conectado(this)
+        lixeira.intValue = Store.naLixeira(this)
         val porArquivo = Store.figs(this).associateBy { it.arquivo }
         maisUsadas.value = Prefs.maisUsadas(this).mapNotNull { porArquivo[it] }.take(12)
         if (sync.estado.value == Sync.Estado.Pronto) io.execute { Store.preencherPacotes(this, Store.figs(this)) }
@@ -254,6 +256,7 @@ class MainActivity : ComponentActivity() {
 
     private fun importarDe(entrada: java.io.InputStream) {
         val dir = Store.dir(this); dir.mkdirs()
+        val antes = Store.figs(this)
         entrada.use { ins ->
             ZipInputStream(ins).use { z ->
                 while (true) {
@@ -266,6 +269,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         Store.limparCache(); ImgCache.limpar()
+        // o zip traz o indice dele: mantem as que ja estavam no app e nao vieram no zip
+        val novas = Store.figs(this)
+        val faltam = antes.filter { f -> novas.none { it.arquivo == f.arquivo || (f.id.isNotBlank() && it.id == f.id) } && File(dir, f.arquivo).exists() }
+        if (faltam.isNotEmpty()) {
+            var prox = (novas.maxOfOrNull { it.n } ?: 0) + 1
+            Store.salvarIndice(this, novas + faltam.map { it.copy(n = prox++) })
+        }
+        Store.log(this, "importou: ${novas.size} do arquivo, ${faltam.size} mantidas")
         Store.gerarIcones(this)
         Store.preencherPacotes(this, Store.figs(this))
     }
@@ -294,6 +305,14 @@ class MainActivity : ComponentActivity() {
                 Store.log(this, "atualizador: erro ${e.message}")
                 runOnUiThread { baixandoUpdate.value = false; aviso.value = "A atualização não baixou. Tente de novo com internet." }
             }
+        }
+    }
+
+    val lixeira = mutableIntStateOf(0)
+    fun restaurarRemovidas() {
+        io.execute {
+            val n = Store.restaurarLixeira(this)
+            runOnUiThread { atualizarListas(); aviso.value = if (n > 0) "$n figurinha${if (n == 1) "" else "s"} de volta." else "Nada pra restaurar." }
         }
     }
 

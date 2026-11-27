@@ -205,13 +205,23 @@ class Sync(private val a: Activity) {
                 atuais += Fig(prox++, nome, anim, texto, tags.ifBlank { "figurinha" } + if (anim) " animada" else "", id, "celular")
                 f.delete()
             }
-            // so apaga as que sumiram se a leitura foi completa
+            // o whatsapp web de um aparelho recem conectado so conhece as favoritas mexidas depois da conexao,
+            // entao a lista dele nao serve pra apagar o resto. So sai daqui o que ja apareceu no web antes e sumiu,
+            // e mesmo assim vai pra lixeira (da pra restaurar nos ajustes)
             var tiradas = 0
+            val arqVistos = File(a.filesDir, "vistos_no_web.txt")
+            val jaVistos = if (arqVistos.exists()) arqVistos.readLines().filter { it.isNotBlank() }.toMutableSet() else mutableSetOf()
             if (falhas == 0 && vistas.isNotEmpty()) {
-                val antes = atuais.size
-                atuais.filter { it.id.isNotBlank() && it.id !in vistas }.forEach { File(Store.dir(a), it.arquivo).delete() }
-                atuais.removeAll { it.id.isNotBlank() && it.id !in vistas }
-                tiradas = antes - atuais.size
+                val sairiam = atuais.filter { it.id.isNotBlank() && it.id in jaVistos && it.id !in vistas }
+                if (sairiam.size > 3 && sairiam.size > atuais.size * 0.3) {
+                    Store.log(a, "sync: ${sairiam.size} sairiam de uma vez, nao removi nada por seguranca")
+                } else if (sairiam.isNotEmpty()) {
+                    Store.paraLixeira(a, sairiam)
+                    atuais.removeAll { f -> sairiam.any { it.n == f.n } }
+                    tiradas = sairiam.size
+                }
+                jaVistos.addAll(vistas)
+                arqVistos.writeText(jaVistos.joinToString("\n"))
             }
             Store.salvarIndice(a, atuais)
             Prefs.marcarSync(a)

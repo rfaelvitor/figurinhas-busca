@@ -128,17 +128,37 @@ private val FRASES_ESPERA = listOf(
 
 @Composable
 private fun EsperaSync(a: MainActivity) {
+    // fica fora do Surface: sem isso o texto sai preto no tema escuro
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) { EsperaSyncConteudo(a) }
+}
+
+@Composable
+private fun EsperaSyncConteudo(a: MainActivity) {
     val ctx = LocalContext.current
-    val amostra = remember { Store.figs(ctx).shuffled().take(4) }
-    val inf = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulo")
-    val t by inf.animateFloat(0f, 4f, androidx.compose.animation.core.infiniteRepeatable(tween(2400, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
+    // uma fila embaralhada com todas as favoritas: cada uma que pula volta como outra
+    val fila = remember { Store.figs(ctx).shuffled() }
+    val vagas = minOf(4, fila.size)
+    val nas = remember { mutableStateListOf<Fig>().apply { addAll(fila.take(vagas)) } }
+    val pulos = remember { List(4) { androidx.compose.animation.core.Animatable(0f) } }
+    LaunchedEffect(Unit) {
+        if (vagas == 0) return@LaunchedEffect
+        var prox = vagas; var k = 0
+        while (true) {
+            val i = k % vagas
+            launch {
+                pulos[i].animateTo(1f, tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                if (fila.size > vagas) { nas[i] = fila[prox % fila.size]; prox++ }
+                pulos[i].animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = .42f, stiffness = 420f))
+            }
+            kotlinx.coroutines.delay(420); k++
+        }
+    }
     var frase by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(2800); frase = (frase + 1) % FRASES_ESPERA.size } }
-    val esperando = a.sync.esperandoFavoritar.value
-    // o teclado da busca ficava por cima do botao de abrir o whatsapp
     val teclado = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val foco = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(Unit) { foco.clearFocus(); teclado?.hide() }
+    val esperando = a.sync.esperandoFavoritar.value
     val total = a.sync.total.intValue
     val feitas = a.sync.feitas.intValue
     Box(
@@ -148,18 +168,17 @@ private fun EsperaSync(a: MainActivity) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.verticalScroll(rememberScrollState())) {
-            // as figurinhas pulam uma de cada vez, como se estivessem sendo copiadas
-            Row(Modifier.height(130.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
-                if (amostra.isEmpty()) Text("✨", fontSize = 64.sp)
-                amostra.forEachIndexed { i, f ->
-                    val fase = ((t - i) % 4f + 4f) % 4f
-                    val pulo = if (fase < 1f) kotlin.math.sin(fase * Math.PI).toFloat() else 0f
+            Row(Modifier.height(170.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+                if (vagas == 0) Text("✨", fontSize = 64.sp)
+                for (i in 0 until vagas) {
+                    val f = nas[i]
+                    val p = pulos[i].value
                     Box(
-                        Modifier.size(64.dp).graphicsLayer {
-                            translationY = -pulo * 120f; rotationZ = pulo * (if (i % 2 == 0) -14f else 14f)
-                            scaleX = 1f + pulo * .15f; scaleY = 1f + pulo * .15f
-                        }.clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(6.dp)
-                    ) { Figura(f.arquivo, Modifier.fillMaxSize()) }
+                        Modifier.size(74.dp).graphicsLayer {
+                            translationY = -p * 190f; rotationZ = p * (if (i % 2 == 0) -16f else 16f)
+                            scaleX = 1f + p * .2f; scaleY = 1f + p * .2f
+                        }.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(6.dp)
+                    ) { key(f.n) { Figura(f.arquivo, Modifier.fillMaxSize()) } }
                 }
             }
             Spacer(Modifier.height(28.dp))
@@ -726,7 +745,10 @@ private fun Ajustes(a: MainActivity, fechar: () -> Unit) {
                 } else {
                     ItemAjuste(Icons.Default.Refresh, "Conectar meu WhatsApp", "Pra novas favoritas entrarem sozinhas") { fechar(); a.abrirConectar() }
                 }
-                ItemAjuste(Icons.Default.Add, "Importar arquivo .zip", "Pra quem tem um arquivo pronto") { a.escolherArquivo() }
+                ItemAjuste(Icons.Default.Add, "Importar arquivo .zip", "Junta com as que já estão no app") { a.escolherArquivo() }
+                if (a.lixeira.intValue > 0) {
+                    ItemAjuste(Icons.Default.Refresh, "Restaurar removidas", "${a.lixeira.intValue} saíram na sincronização, toque pra trazer de volta") { a.restaurarRemovidas() }
+                }
             }
             Grupo("WhatsApp") {
                 ItemAjuste(Icons.Default.Add, "Pacotes 🔍 no WhatsApp", if (a.pacotesOk.value) "Adicionados" else "Faltando, toque pra adicionar",
