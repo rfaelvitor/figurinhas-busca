@@ -19,6 +19,8 @@ object Prefs {
         sp(ctx).edit().putString("recentes", nova.joinToString("\n")).apply()
     }
 
+    fun limparHistorico(ctx: Context) = sp(ctx).edit().remove("recentes").apply()
+
     // o whatsapp responde se o pacote ja foi adicionado
     fun pacoteNoWhatsApp(ctx: Context, id: String): Boolean = try {
         val uri = Uri.parse("content://com.whatsapp.provider.sticker_whitelist_check/is_whitelisted").buildUpon()

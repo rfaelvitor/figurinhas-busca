@@ -46,14 +46,21 @@ object Store {
         return lista
     }
 
-    fun limparCache() { cache = null }
+    fun limparCache() { cache = null; Vetores.limpar() }
+
+    // calibrado com as figurinhas reais (tools/avaliar_busca.py)
+    var SEM_MIN = .45
+    var SEM_PESO = 160.0
+    val PARADAS = setOf("de", "da", "do", "um", "uma", "com", "to", "ta", "eu", "me", "que", "pra", "para", "ser", "tipo", "o", "a", "e", "no", "na", "em")
 
     @Volatile private var grupos: List<List<String>>? = null
+    private var rotulos: List<String> = emptyList()
 
     private fun grupos(ctx: Context): List<List<String>> {
         grupos?.let { return it }
         val arr = JSONArray(ctx.assets.open("sinonimos.json").bufferedReader().readText())
         val g = (0 until arr.length()).map { i -> val a = arr.getJSONArray(i); (0 until a.length()).map { norm(a.getString(it)) } }
+        rotulos = (0 until arr.length()).map { arr.getJSONArray(it).getString(0) }
         grupos = g
         return g
     }
@@ -65,6 +72,50 @@ object Store {
         val extra = grupos(ctx).filter { g -> g.any { base.contains(" $it ") } }.flatten().toSet().joinToString(" ")
         f.ne = extra
         return extra
+    }
+
+    // o que a pessoa quer passar na resposta, com palavras que puxam o sentido certo
+    val INTENCOES = linkedMapOf(
+        "Ironia" to "ironia sarcasmo supostamente claro debochado desconfiado",
+        "Rir junto" to "rindo risada kkkk engracado gargalhada",
+        "Concordar" to "ok joinha positivo concordo certo isso",
+        "Discordar" to "nao discordo negativo nao autorizo nem pensar",
+        "Consolar" to "abraco carinho amor fofo triste consolo",
+        "Zoar" to "zoando debochado lingua careta provocando",
+        "Surpresa" to "surpreso chocado choque espantado minha nossa",
+        "Preguiça" to "preguica cansado sono dormindo nao quero trabalhar",
+        "Raiva" to "bravo raiva irritado puto nervoso",
+        "Amor" to "amor coracao apaixonado carinho beijo",
+        "Tanto faz" to "indiferente tanto faz nem ligo por mim sei la"
+    )
+
+    // sugere figurinhas pra responder uma conversa colada, puxando pro que a pessoa quer passar
+    fun sugerir(ctx: Context, conversa: String, intencao: String?): List<Fig> {
+        val todas = figs(ctx)
+        if (todas.isEmpty() || !Vetores.carregar(ctx)) return emptyList()
+        val vc = if (conversa.isBlank()) null else Vetores.vetorTexto(norm(conversa), PARADAS)
+        val pal = intencao?.let { INTENCOES[it] }
+        val vi = pal?.let { Vetores.vetorTexto(norm(it), PARADAS) }
+        if (vc == null && vi == null) return emptyList()
+        val dim = (vc ?: vi)!!.size
+        val v = FloatArray(dim) { (vc?.get(it) ?: 0f) * .6f + (vi?.get(it) ?: 0f) }
+        val n = kotlin.math.sqrt(v.fold(0f) { s, x -> s + x * x }); if (n > 0) for (i in v.indices) v[i] /= n
+        val chaves = pal?.let { norm(it).split(" ").toSet() } ?: emptySet()
+        return todas.map { f ->
+            var s = Vetores.vetorFig(f)?.let { Vetores.cos(v, it) } ?: 0f
+            // bonus quando a descricao ja fala exatamente do sentimento escolhido
+            if (chaves.isNotEmpty()) { val b = " ${f.nt} ${f.ng} ${expandir(ctx, f)} "; if (chaves.any { b.contains(" $it ") }) s += .15f }
+            f to s
+        }.sortedByDescending { it.second }.take(24).filter { it.second > .2f }.map { it.first }
+    }
+
+    // temas mais comuns nas figurinhas da pessoa viram sugestao de busca
+    fun sugestoes(ctx: Context): List<String> {
+        val figs = figs(ctx)
+        if (figs.isEmpty()) return emptyList()
+        val gs = grupos(ctx)
+        return gs.mapIndexed { i, g -> rotulos[i] to figs.count { f -> val b = " ${f.nt} ${f.ng} "; g.any { b.contains(" $it ") } } }
+            .filter { it.second >= 2 }.sortedByDescending { it.second }.take(10).map { it.first }
     }
 
     private fun alternativas(ctx: Context, t: String): Set<String> {
@@ -90,7 +141,7 @@ object Store {
         else if (tudo.contains(q)) s += 100
         else if (q.length > 3 && semLigacao(tudo).contains(semLigacao(q))) s += 90
         else if (ext.contains(" $q ")) s += 60
-        val termos = q.split(" ").filter { it.length > 1 && it !in setOf("de", "da", "do", "um", "uma", "com", "to", "ta", "eu", "me", "que", "pra", "para", "ser", "tipo") }
+        val termos = q.split(" ").filter { it.length > 1 && it !in PARADAS }
         var acertos = 0
         for (t in termos) {
             val melhor = palavras.maxOfOrNull { w -> if (w.startsWith(t)) 1.0 else dice(t, w) } ?: 0.0
@@ -107,9 +158,18 @@ object Store {
         val todas = figs(ctx)
         val q = norm(consulta)
         if (q.isEmpty()) return todas
-        val r = todas.map { it to nota(ctx, it, q) }.filter { it.second > 0 }.sortedByDescending { it.second }
+        // parte de sentido (ia): parecido mesmo sem palavra em comum
+        val vq = if (Vetores.carregar(ctx)) Vetores.vetorTexto(q, PARADAS) else null
+        val r = todas.map { f ->
+            var s = nota(ctx, f, q)
+            if (vq != null) {
+                val vf = Vetores.vetorFig(f)
+                if (vf != null) { val c = Vetores.cos(vq, vf); if (c > SEM_MIN) s += (c - SEM_MIN) * SEM_PESO }
+            }
+            f to s
+        }.filter { it.second > 0 }.sortedByDescending { it.second }
         val topo = r.firstOrNull()?.second ?: return emptyList()
-        return r.filter { it.second >= topo * .1 }.map { it.first }
+        return r.filter { it.second >= topo * .15 }.map { it.first }
     }
 
     // coloca os resultados nos dois pacotes e troca a versao pro whatsapp recarregar

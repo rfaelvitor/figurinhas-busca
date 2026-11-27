@@ -22,6 +22,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +54,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import java.io.File
 
 // cores tiradas do icone: roxo do fundo e amarelo da figurinha
@@ -86,6 +91,7 @@ fun App(a: MainActivity) {
                 when (t) {
                     Tela.Configurar -> Configurar(a)
                     Tela.Busca -> Busca(a)
+                    Tela.Sugerir -> Sugerir(a)
                 }
             }
             a.aviso.value?.let { msg ->
@@ -99,45 +105,50 @@ fun App(a: MainActivity) {
 
 // ---------- configuracao inicial ----------
 
+private val EXEMPLOS = listOf("gato comendo", "segunda-feira", "aguardando o pix", "tô com sono", "rindo de nervoso", "bom dia", "não sei")
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Configurar(a: MainActivity) {
-    var passo by rememberSaveable { mutableIntStateOf(0) }
-    val ultimo = 3
-    Column(
-        Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp)
-    ) {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(ultimo + 1) { i ->
-                Box(Modifier.weight(1f).height(4.dp).clip(CircleShape)
-                    .background(if (i <= passo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant))
-            }
-        }
-        AnimatedContent(
-            targetState = passo, modifier = Modifier.weight(1f),
-            transitionSpec = {
-                val dir = if (targetState > initialState) 1 else -1
-                (slideInHorizontally(tween(280)) { it * dir / 4 } + fadeIn(tween(280))) togetherWith
-                    (slideOutHorizontally(tween(200)) { -it * dir / 4 } + fadeOut(tween(200)))
-            }, label = "passo"
-        ) { p ->
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 40.dp)) {
+    val total = 5
+    val pager = rememberPagerState(initialPage = a.demoPasso.coerceIn(0, total - 1)) { total }
+    val scope = rememberCoroutineScope()
+    val atual = pager.currentPage
+    val pode = when (atual) { 1 -> a.total.intValue > 0; 2 -> a.pacotesOk.value; else -> true }
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        HorizontalPager(state = pager, modifier = Modifier.weight(1f), userScrollEnabled = pode || pager.currentPageOffsetFraction != 0f) { p ->
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp, 56.dp, 28.dp, 16.dp)) {
                 when (p) {
-                    0 -> PassoBoasVindas()
+                    0 -> PassoOla()
                     1 -> PassoFavoritas(a)
                     2 -> PassoPacotes(a)
+                    3 -> PassoAuto(a)
                     else -> PassoAtalho(a)
                 }
             }
         }
-        val podeSeguir = when (passo) { 1 -> a.total.intValue > 0; 2 -> a.pacotesOk.value; else -> true }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (passo > 0) TextButton(onClick = { passo-- }) { Text("Voltar") }
-            Spacer(Modifier.weight(1f))
-            if (passo == ultimo) {
-                Button(onClick = { a.concluirConfiguracao() }, modifier = Modifier.height(52.dp)) { Text("Começar a buscar") }
+        AnimatedVisibility(!pode) {
+            Text("Termine este passo pra seguir", Modifier.fillMaxWidth().padding(bottom = 4.dp), textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth().padding(20.dp, 8.dp, 20.dp, 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(60.dp)) {
+                if (atual > 0) OutlinedIconButton(onClick = { scope.launch { pager.animateScrollToPage(atual - 1) } }, Modifier.fillMaxSize()) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar")
+                }
+            }
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center) {
+                repeat(total) { i ->
+                    val largura by androidx.compose.animation.core.animateDpAsState(if (i == atual) 22.dp else 8.dp, label = "ponto")
+                    Box(Modifier.padding(3.dp).height(8.dp).width(largura).clip(CircleShape)
+                        .background(if (i == atual) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant))
+                }
+            }
+            if (atual == total - 1) {
+                Button(onClick = { a.concluirConfiguracao() }, Modifier.height(60.dp)) { Text("Começar", fontSize = 18.sp) }
             } else {
-                Button(onClick = { passo++ }, enabled = podeSeguir, modifier = Modifier.height(52.dp)) {
-                    Text(if (passo == 0) "Configurar" else "Continuar")
+                FilledIconButton(onClick = { scope.launch { pager.animateScrollToPage(atual + 1) } }, enabled = pode, modifier = Modifier.size(60.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Avançar")
                 }
             }
         }
@@ -145,119 +156,133 @@ private fun Configurar(a: MainActivity) {
 }
 
 @Composable
-private fun PassoBoasVindas() {
-    // o icone adaptativo nao renderiza direto no compose, entao monta com as duas camadas
-    Box(Modifier.size(112.dp).clip(RoundedCornerShape(30.dp))) {
+private fun TituloGrande(t: String, sub: String) {
+    Text(t, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold)
+    Spacer(Modifier.height(12.dp))
+    Text(sub, fontSize = 18.sp, lineHeight = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(32.dp))
+}
+
+@Composable
+private fun PassoOla() {
+    Box(Modifier.size(96.dp).clip(RoundedCornerShape(26.dp))) {
         Image(painterResource(R.drawable.ic_fundo), null, Modifier.fillMaxSize())
         Image(painterResource(R.drawable.ic_frente), null, Modifier.fillMaxSize())
     }
-    Spacer(Modifier.height(28.dp))
-    Text("Ache qualquer figurinha favorita digitando", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(12.dp))
-    Text(
-        "Escreva o que a figurinha mostra ou o que está escrito nela, tipo \"esqueleto\" ou \"cala a boca\". " +
-            "Ela aparece num pacote próprio dentro do WhatsApp, pronta pra mandar, até as animadas.",
-        style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(Modifier.height(24.dp))
-    Text("A configuração leva uns 2 minutos e só é feita uma vez.", style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(32.dp))
+    TituloGrande("Digitou, achou, mandou.", "Suas figurinhas favoritas pelo que elas mostram, dizem ou sentem.")
+    // a busca de exemplo vai trocando sozinha pra mostrar o que da pra procurar
+    var i by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(1800); i = (i + 1) % EXEMPLOS.size } }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(18.dp, 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(12.dp))
+        AnimatedContent(targetState = EXEMPLOS[i], label = "exemplo",
+            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) }) { t ->
+            Text(t, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+        }
+    }
 }
 
 @Composable
 private fun PassoFavoritas(a: MainActivity) {
-    Titulo("Traga suas favoritas", "O app precisa de uma cópia das suas figurinhas, com a descrição de cada uma, pra conseguir buscar.")
+    TituloGrande("Traga suas favoritas", "O app guarda uma cópia delas pra buscar num piscar de olhos.")
     val ok = a.total.intValue > 0
     CartaoEstado(
-        feito = ok,
-        titulo = if (ok) "${a.total.intValue} figurinhas prontas pra busca" else "Importar arquivo de figurinhas",
-        texto = if (ok) "Se quiser trocar, importe outro arquivo." else "Escolha o arquivo .zip de figurinhas que você recebeu.",
-        acao = if (a.importando.value) "Importando…" else if (ok) "Importar outro" else "Escolher arquivo",
+        feito = ok, titulo = if (ok) "${a.total.intValue} figurinhas prontas" else "Importar arquivo",
+        texto = if (ok) null else "O .zip de figurinhas que você recebeu.",
+        acao = if (a.importando.value) "Importando…" else if (ok) "Trocar arquivo" else "Escolher arquivo",
         carregando = a.importando.value, onClick = { a.escolherArquivo() }
     )
     Spacer(Modifier.height(12.dp))
-    CartaoEstado(
-        feito = false, titulo = "Conectar meu WhatsApp",
-        texto = "Em breve: o app vai puxar e descrever suas favoritas sozinho, sem precisar de arquivo.",
-        acao = null, carregando = false, onClick = {}
-    )
+    CartaoEstado(feito = false, titulo = "Conectar meu WhatsApp", texto = "Em breve: puxa suas favoritas sozinho.", acao = null, carregando = false, onClick = {})
 }
 
 @Composable
 private fun PassoPacotes(a: MainActivity) {
-    Titulo("Adicione os pacotes de busca", "Os resultados vão aparecer em dois pacotes na sua aba de figurinhas do WhatsApp: um pra figurinhas normais e outro pras animadas.")
+    TituloGrande("Ganhe 2 pacotes 🔍", "É neles que a sua busca aparece, dentro do WhatsApp.")
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SeloPacote(R.drawable.ic_tile, "🔍 Busca", MaterialTheme.colorScheme.primary)
-        SeloPacote(R.drawable.ic_tile, "🔍 Busca GIF", Color(0xFF7A3FD1))
+        SeloPacote(R.drawable.ic_tile, "Busca", MaterialTheme.colorScheme.primary)
+        SeloPacote(R.drawable.ic_tile, "Busca GIF", Color(0xFF7A3FD1))
     }
     Spacer(Modifier.height(20.dp))
     CartaoEstado(
-        feito = a.pacotesOk.value,
-        titulo = if (a.pacotesOk.value) "Pacotes adicionados" else "Adicionar ao WhatsApp",
-        texto = if (a.pacotesOk.value) "Tudo certo. Eles já aparecem no WhatsApp." else "O WhatsApp vai abrir duas vezes pra confirmar. Toque em \"Adicionar\" nas duas.",
-        acao = if (a.pacotesOk.value) null else "Adicionar pacotes", carregando = a.enviando.value,
-        onClick = { a.adicionarPacotes {} }
+        feito = a.pacotesOk.value, titulo = if (a.pacotesOk.value) "Pacotes no WhatsApp" else "Adicionar ao WhatsApp",
+        texto = if (a.pacotesOk.value) null else "Toque em \"Adicionar\" nas duas janelas.",
+        acao = if (a.pacotesOk.value) null else "Adicionar pacotes", carregando = a.enviando.value, onClick = { a.adicionarPacotes {} }
     )
 }
 
 @Composable
-private fun PassoAtalho(a: MainActivity) {
-    Titulo("Busque sem sair da conversa", "Um atalho nas configurações rápidas abre a busca por cima do WhatsApp. Depois de tocar na figurinha, você volta direto pro chat.")
+private fun PassoAuto(a: MainActivity) {
+    TituloGrande("Zero toques a mais", "O WhatsApp pede pra confirmar cada busca nova. O app pode tocar em \"Atualizar\" por você.")
     CartaoEstado(
-        feito = a.atalhoOk.value,
-        titulo = if (a.atalhoOk.value) "Atalho adicionado" else "Adicionar atalho \"Buscar figurinha\"",
-        texto = if (a.atalhoOk.value) "Puxe a barra de notificações pra usar." else "Opcional. Dá pra abrir pelo ícone do app também.",
+        feito = a.autoOk.value, titulo = if (a.autoOk.value) "Confirmação automática ligada" else "Ligar confirmação automática",
+        texto = if (a.autoOk.value) null else "Nas configurações, ative \"Figurinhas: confirmar pacote\". Opcional.",
+        acao = if (a.autoOk.value) null else "Abrir configurações", carregando = false, onClick = { a.abrirAcessibilidade() }
+    )
+    if (!a.autoOk.value) {
+        Spacer(Modifier.height(12.dp))
+        Text("Se aparecer \"configuração restrita\": abra as informações do app, toque nos ⋮ e em \"Permitir configurações restritas\".",
+            fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { a.abrirInfoDoApp() }) { Text("Abrir informações do app") }
+    }
+}
+
+@Composable
+private fun PassoAtalho(a: MainActivity) {
+    TituloGrande("Busque de qualquer conversa", "Um atalho na barra de notificações abre a busca e te devolve pro chat.")
+    CartaoEstado(
+        feito = a.atalhoOk.value, titulo = if (a.atalhoOk.value) "Atalho adicionado" else "Adicionar atalho",
+        texto = if (a.atalhoOk.value) null else "Opcional. O ícone do app também funciona.",
         acao = if (a.atalhoOk.value) null else "Adicionar atalho", carregando = false, onClick = { a.pedirAtalho() }
     )
 }
 
 @Composable
-private fun Titulo(t: String, sub: String) {
-    Text(t, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(8.dp))
-    Text(sub, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(24.dp))
-}
-
-@Composable
 private fun SeloPacote(icone: Int, nome: String, cor: Color) {
     Row(
-        Modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(10.dp, 8.dp),
+        Modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(12.dp, 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(28.dp).clip(CircleShape).background(cor), contentAlignment = Alignment.Center) {
-            Icon(painterResource(icone), null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Box(Modifier.size(30.dp).clip(CircleShape).background(cor), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icone), null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
-        Spacer(Modifier.width(8.dp))
-        Text(nome, style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.width(10.dp))
+        Text(nome, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun CartaoEstado(feito: Boolean, titulo: String, texto: String, acao: String?, carregando: Boolean, onClick: () -> Unit) {
+private fun CartaoEstado(feito: Boolean, titulo: String, texto: String?, acao: String?, carregando: Boolean, onClick: () -> Unit) {
     val desativado = acao == null && !feito
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
             .background(if (feito) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer)
-            .padding(18.dp)
+            .padding(20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (feito) {
-                Box(Modifier.size(24.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+                Box(Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
             }
-            Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+            Text(titulo, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 color = if (desativado) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
         }
-        Spacer(Modifier.height(6.dp))
-        Text(texto, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (texto != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(texto, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (acao != null) {
-            Spacer(Modifier.height(14.dp))
-            FilledTonalButton(onClick = onClick, enabled = !carregando) {
-                if (carregando) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
-                Text(acao)
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onClick, enabled = !carregando, modifier = Modifier.height(52.dp)) {
+                if (carregando) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(10.dp)) }
+                Text(acao, fontSize = 17.sp)
             }
         }
     }
@@ -268,10 +293,10 @@ private fun CartaoEstado(feito: Boolean, titulo: String, texto: String, acao: St
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun Busca(a: MainActivity) {
-    var q by rememberSaveable { mutableStateOf("") }
+    var q by rememberSaveable { mutableStateOf(a.demoBusca) }
     var res by remember { mutableStateOf<List<Fig>>(emptyList()) }
     var detalhe by remember { mutableStateOf<Fig?>(null) }
-    var ajustes by remember { mutableStateOf(false) }
+    var ajustes by remember { mutableStateOf(a.demoAjustes) }
     val foco = remember { FocusRequester() }
 
     LaunchedEffect(q, a.total.intValue) {
@@ -318,15 +343,34 @@ private fun Busca(a: MainActivity) {
             a.total.intValue == 0 -> Vazio("Nenhuma figurinha ainda", "Abra os ajustes e importe seu arquivo de figurinhas.")
             q.isBlank() -> {
                 if (a.recentes.value.isNotEmpty()) {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(vertical = 6.dp)) {
-                        items(a.recentes.value) { r -> SuggestionChip(onClick = { q = r }, label = { Text(r) }) }
+                    Row(Modifier.fillMaxWidth().padding(20.dp, 4.dp, 8.dp, 0.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Recentes", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = { a.limparHistorico() }) { Text("Limpar") }
                     }
+                    Chips(a.recentes.value, Icons.Default.Refresh) { q = it }
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp, 6.dp).clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer).clickable { a.tela.value = Tela.Sugerir }.padding(16.dp, 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sem ideia do que mandar?", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("Cole a conversa e eu sugiro", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+                if (a.sugestoes.value.isNotEmpty()) {
+                    Text("Sugestões", Modifier.padding(20.dp, 10.dp, 20.dp, 2.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Chips(a.sugestoes.value, null) { q = it }
                 }
                 Legenda("Suas ${a.total.intValue} favoritas · toque pra mandar")
                 Grade(res, { a.enviar("", res, it) }, { detalhe = it })
             }
-            res.isEmpty() -> Vazio("Nada com \"$q\"", "Tente o que aparece na figurinha (gato, cachorro) ou o sentimento dela (triste, rindo).")
+            res.isEmpty() -> {
+                Vazio("Nada com \"$q\"", "Tente o que aparece na figurinha ou o que ela sente. Umas ideias:")
+                Chips(a.sugestoes.value, null) { q = it }
+            }
             else -> {
                 Legenda("${res.size} resultado${if (res.size == 1) "" else "s"} · toque pra mandar")
                 Grade(res, { a.enviar(q, res, it) }, { detalhe = it })
@@ -364,6 +408,16 @@ private fun Busca(a: MainActivity) {
     }
 
     if (ajustes) Ajustes(a) { ajustes = false }
+}
+
+@Composable
+private fun Chips(itens: List<String>, icone: androidx.compose.ui.graphics.vector.ImageVector?, tocar: (String) -> Unit) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+        items(itens) { r ->
+            AssistChip(onClick = { tocar(r) }, label = { Text(r, fontSize = 15.sp) },
+                leadingIcon = icone?.let { { Icon(it, null, Modifier.size(16.dp)) } })
+        }
+    }
 }
 
 @Composable
@@ -418,6 +472,10 @@ private fun Ajustes(a: MainActivity, fechar: () -> Unit) {
             ItemAjuste(Icons.Default.Refresh, "Importar figurinhas", "${a.total.intValue} no app agora") { a.escolherArquivo() }
             ItemAjuste(Icons.Default.Add, "Adicionar pacotes ao WhatsApp",
                 if (a.pacotesOk.value) "Já adicionados" else "Faltando, toque pra adicionar") { a.adicionarPacotes {} }
+            ItemAjuste(Icons.Default.Delete, "Limpar histórico de buscas",
+                if (a.recentes.value.isEmpty()) "Nada salvo" else "${a.recentes.value.size} buscas salvas") { a.limparHistorico() }
+            ItemAjuste(Icons.Default.CheckCircle, "Confirmação automática",
+                if (a.autoOk.value) "Ligada: o app toca em Atualizar por você" else "Desligada, toque pra ligar") { a.abrirAcessibilidade() }
             ItemAjuste(Icons.Default.Search, "Atalho nas configurações rápidas", "Abre a busca por cima de qualquer app") { a.pedirAtalho() }
             ItemAjuste(Icons.Default.PlayArrow, "Ver a configuração inicial", "O passo a passo que um usuário novo vê") { fechar(); a.tela.value = Tela.Configurar }
             ItemAjuste(Icons.Default.Info, "Diagnóstico", "Registro do que o WhatsApp pediu ao app") { diag = a.diagnostico() }
@@ -446,6 +504,52 @@ private fun ItemAjuste(icone: androidx.compose.ui.graphics.vector.ImageVector, t
         modifier = Modifier.padding(horizontal = 8.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
+}
+
+// ---------- sugestao pela conversa ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Sugerir(a: MainActivity) {
+    var texto by rememberSaveable { mutableStateOf(a.demoTexto) }
+    var intencao by rememberSaveable { mutableStateOf<String?>(if (a.demoTexto.isNotEmpty()) "Ironia" else null) }
+    var res by remember { mutableStateOf<List<Fig>>(emptyList()) }
+    androidx.activity.compose.BackHandler { a.tela.value = Tela.Busca }
+    LaunchedEffect(texto, intencao) {
+        delay(250)
+        res = withContext(Dispatchers.Default) { a.sugerir(texto, intencao) }
+    }
+    Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+        Row(Modifier.padding(4.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { a.tela.value = Tela.Busca }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }
+            Text("Me ajuda a responder", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+        OutlinedTextField(
+            value = texto, onValueChange = { texto = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 110.dp, max = 180.dp),
+            placeholder = { Text("Cole aqui a mensagem que você recebeu (pode ser a conversa toda)") },
+            shape = RoundedCornerShape(20.dp)
+        )
+        Row(Modifier.padding(horizontal = 12.dp)) {
+            TextButton(onClick = { texto = a.colarTexto() }) { Text("Colar do WhatsApp") }
+            if (texto.isNotEmpty()) TextButton(onClick = { texto = "" }) { Text("Apagar") }
+        }
+        Text("O que você quer passar?", Modifier.padding(20.dp, 4.dp), style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(Store.INTENCOES.keys.toList()) { k ->
+                FilterChip(selected = intencao == k, onClick = { intencao = if (intencao == k) null else k }, label = { Text(k, fontSize = 15.sp) })
+            }
+        }
+        when {
+            texto.isBlank() && intencao == null -> Vazio("Cole uma mensagem ou escolha um clima", "Eu procuro nas suas favoritas o que combina pra responder.")
+            res.isEmpty() -> Vazio("Não achei nada que combine", "Tente escolher outro clima ou colar mais da conversa.")
+            else -> {
+                Legenda("Combinam com a conversa · toque pra mandar")
+                Grade(res, { a.enviar(texto.take(40), res, it) }, {})
+            }
+        }
+    }
 }
 
 // ---------- imagens (inclusive animadas) ----------

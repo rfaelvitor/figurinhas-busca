@@ -10,6 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # os vetores de ia so sao gerados de novo quando o script ou o vocabulario mudam
+      - uses: actions/cache@v4
+        id: vet
+        with:
+          path: app/src/main/assets/vetores.bin
+          key: vetores-${{ hashFiles('tools/gerar_vetores.py', 'tools/vocab_extra.txt', 'app/src/main/assets/sinonimos.json') }}
+      - if: steps.vet.outputs.cache-hit != 'true'
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet sentence-transformers
+          python tools/gerar_vetores.py app/src/main/assets/vetores.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vetores
+          path: app/src/main/assets/vetores.bin
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,8 +37,41 @@ jobs:
           gradle-version: "8.9"
       - run: gradle assembleDebug --no-daemon
       - run: cp app/build/outputs/apk/debug/app-debug.apk figurinhas.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: figurinhas.apk
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
           files: figurinhas.apk
+
+  # abre o app num emulador e tira print de cada tela, pra revisar sem precisar do celular
+  telas:
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+      - run: pip install --quiet pillow && python3 tools/demo_dados.py demo.zip
+      - name: kvm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: sh tools/telas.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telas
+          path: telas
