@@ -32,7 +32,7 @@
         <service
             android:name=".BuscaTile"
             android:exported="true"
-            android:icon="@android:drawable/ic_menu_search"
+            android:icon="@drawable/ic_tile"
             android:label="Buscar figurinha"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
