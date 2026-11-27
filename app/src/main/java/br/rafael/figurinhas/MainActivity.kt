@@ -51,6 +51,7 @@ class MainActivity : Activity() {
         botao("Add pacote") { adicionar(Store.PACK_EST, "🔍 Busca") }
         botao("Add GIF") { adicionar(Store.PACK_ANIM, "🔍 Busca GIF") }
         botao("WhatsApp") { abrirWhatsApp() }
+        botao("Diag") { diagnostico() }
 
         status = TextView(this).apply { setPadding(0, (6 * dp).toInt(), 0, (6 * dp).toInt()); setTextColor(Color.GRAY) }
         grade = GridView(this).apply {
@@ -146,6 +147,17 @@ class MainActivity : Activity() {
         try { startActivityForResult(i, 200) } catch (e: ActivityNotFoundException) {
             Toast.makeText(this, "WhatsApp não encontrado", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun diagnostico() {
+        val txt = TextView(this).apply { text = Store.lerLog(this@MainActivity); textSize = 11f; setTextIsSelectable(true); setPadding(30, 20, 30, 20) }
+        AlertDialog.Builder(this).setTitle("Diagnóstico (mais recente em cima)")
+            .setView(ScrollView(this).apply { addView(txt) })
+            .setPositiveButton("Fechar", null)
+            .setNeutralButton("Copiar") { _, _ ->
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("diag", txt.text))
+            }.show()
     }
 
     private fun abrirWhatsApp() {

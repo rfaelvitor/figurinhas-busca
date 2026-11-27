@@ -92,13 +92,30 @@ object Store {
             return r
         }
         val antigo = lerEstado(ctx)
-        val versao = (antigo.optInt("versao", 0) + 1)
         val o = JSONObject()
-            .put("versao", versao)
-            .put(PACK_EST, JSONArray(montar(false)))
-            .put(PACK_ANIM, JSONArray(montar(true)))
+        for ((pack, anim) in listOf(PACK_EST to false, PACK_ANIM to true)) {
+            val novo = montar(anim)
+            val velho = arquivosDoPacote(ctx, pack)
+            // so troca a versao do pacote que mudou
+            val v = antigo.optInt("v_$pack", 0) + if (novo != velho) 1 else 0
+            o.put(pack, JSONArray(novo)).put("v_$pack", v)
+        }
         estado(ctx).writeText(o.toString())
+        log(ctx, "pacotes atualizados: ${resultado.size} resultados, v_busca=${o.getInt("v_$PACK_EST")} v_gif=${o.getInt("v_$PACK_ANIM")}")
         ctx.contentResolver.notifyChange(android.net.Uri.parse("content://$AUTH/metadata"), null)
+    }
+
+    fun versao(ctx: Context, pack: String) = lerEstado(ctx).optInt("v_$pack", 0)
+
+    private val fmt = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+    @Synchronized fun log(ctx: Context, msg: String) {
+        val f = File(ctx.filesDir, "diag.log")
+        val linhas = (if (f.exists()) f.readLines() else emptyList()).takeLast(150) + "${fmt.format(java.util.Date())} $msg"
+        f.writeText(linhas.joinToString("\n"))
+    }
+    fun lerLog(ctx: Context): String {
+        val f = File(ctx.filesDir, "diag.log")
+        return if (f.exists()) f.readLines().reversed().joinToString("\n") else "(vazio)"
     }
 
     fun lerEstado(ctx: Context): JSONObject {

@@ -25,16 +25,17 @@ class StickerProvider : ContentProvider() {
 
     private fun linhaPack(c: MatrixCursor, id: String) {
         val ctx = context!!
-        val versao = Store.lerEstado(ctx).optInt("versao", 0).toString()
+        val versao = Store.versao(ctx, id).toString()
         val anim = id == Store.PACK_ANIM
         c.addRow(arrayOf<Any>(
             id, if (anim) "🔍 Busca GIF" else "🔍 Busca", "Figurinhas", "tray_$id.png",
-            "", "", "", "", "", "", versao, 0, if (anim) 1 else 0
+            "", "", "", "", "", "", versao, 1, if (anim) 1 else 0
         ))
     }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
         val seg = uri.pathSegments
+        Store.log(context!!, "query ${uri.path} por ${callingPackage ?: "?"}")
         return when {
             seg.size == 1 && seg[0] == "metadata" -> MatrixCursor(colsPack).also { c ->
                 linhaPack(c, Store.PACK_EST); linhaPack(c, Store.PACK_ANIM)
@@ -58,6 +59,7 @@ class StickerProvider : ContentProvider() {
         if (seg.size != 3 || seg[0] != "stickers_asset") return null
         val ctx = context!!
         val nome = seg[2]
+        Store.log(ctx, "arquivo ${seg[1]}/$nome")
         val arq = if (nome.startsWith("tray_")) File(ctx.filesDir, nome) else File(Store.dir(ctx), nome)
         if (!arq.exists() || arq.parentFile?.canonicalPath !in listOf(ctx.filesDir.canonicalPath, Store.dir(ctx).canonicalPath)) return null
         val pfd = ParcelFileDescriptor.open(arq, ParcelFileDescriptor.MODE_READ_ONLY)
