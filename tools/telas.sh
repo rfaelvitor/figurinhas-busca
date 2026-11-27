@@ -26,3 +26,6 @@ adb shell cmd uimode night no
 abrir --es demo_tela sugerir --es demo_texto nossa_que_dia_incrivel_no_trabalho_hoje_adorei_ficar_3_horas_em_reuniao; foto 13_sugerir 5
 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
+abrir --es demo_tela conectar; foto 14_conectar 20
+adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
+adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true

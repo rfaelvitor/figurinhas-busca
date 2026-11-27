@@ -37,6 +37,11 @@ class MainActivity : ComponentActivity() {
     val recentes = mutableStateOf<List<String>>(emptyList())
     val sugestoes = mutableStateOf<List<String>>(emptyList())
     val autoOk = mutableStateOf(false)
+    val maisUsadas = mutableStateOf<List<Fig>>(emptyList())
+    val semResultado = mutableStateOf<List<String>>(emptyList())
+    val conectado = mutableStateOf(false)
+    lateinit var sync: Sync
+    var telaAntesDeConectar = Tela.Busca
 
     // usado pelo teste automatico no emulador pra abrir cada tela direto
     var demoPasso = 0
@@ -58,15 +63,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         intent.getStringExtra("demo_importar")?.let { importarDe(File(filesDir, it).inputStream()) }
         intent.getStringExtra("demo_recentes")?.replace('_', ' ')?.split(",")?.reversed()?.forEach { Prefs.guardarBusca(this, it) }
+        sync = Sync(this)
+        sync.aoTerminar = { atualizarListas() }
+        conectado.value = Prefs.conectado(this)
         total.intValue = Store.figs(this).size
         recentes.value = Prefs.recentes(this)
-        sugestoes.value = Store.sugestoes(this)
+        sugestoes.value = Store.INTENCOES.keys.toList()
         pacotesOk.value = Prefs.pacoteNoWhatsApp(this, Store.PACK_EST) && Prefs.pacoteNoWhatsApp(this, Store.PACK_ANIM)
         // quem ja tinha tudo pronto antes dessa versao nao precisa passar pela configuracao
         if (!Prefs.configurado(this) && total.intValue > 0 && pacotesOk.value) Prefs.marcarConfigurado(this)
         tela.value = if (Prefs.configurado(this)) Tela.Busca else Tela.Configurar
         when (intent.getStringExtra("demo_tela")) {
             "configurar" -> { tela.value = Tela.Configurar; demoPasso = intent.getIntExtra("demo_passo", 0) }
+            "conectar" -> { tela.value = Tela.Conectar; sync.conectar() }
             "sugerir" -> { tela.value = Tela.Sugerir; demoTexto = intent.getStringExtra("demo_texto")?.replace('_', ' ') ?: "" }
             "busca" -> { tela.value = Tela.Busca; demoBusca = intent.getStringExtra("demo_q")?.replace('_', ' ') ?: ""; demoAjustes = intent.getBooleanExtra("demo_ajustes", false) }
         }
@@ -80,7 +89,37 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         pacotesOk.value = Prefs.pacoteNoWhatsApp(this, Store.PACK_EST) && Prefs.pacoteNoWhatsApp(this, Store.PACK_ANIM)
         autoOk.value = AutoConfirma.ativo(this)
+        atualizarListas()
+        // sincroniza sozinho se faz mais de 6 horas, sem atrapalhar a busca
+        if (conectado.value && tela.value == Tela.Busca && !sync.rodando() &&
+            System.currentTimeMillis() - Prefs.ultimaSync(this) > 6 * 3600_000L) sync.sincronizar()
     }
+
+    fun atualizarListas() {
+        total.intValue = Store.figs(this).size
+        sugestoes.value = Store.INTENCOES.keys.toList()
+        semResultado.value = Prefs.semResultado(this)
+        conectado.value = Prefs.conectado(this)
+        val porArquivo = Store.figs(this).associateBy { it.arquivo }
+        maisUsadas.value = Prefs.maisUsadas(this).mapNotNull { porArquivo[it] }.take(12)
+        if (sync.estado.value == Sync.Estado.Pronto) io.execute { Store.preencherPacotes(this, Store.figs(this)) }
+    }
+
+    fun abrirConectar() {
+        if (tela.value != Tela.Conectar) telaAntesDeConectar = tela.value
+        tela.value = Tela.Conectar
+        sync.conectar()
+    }
+
+    fun sairDeConectar() { tela.value = telaAntesDeConectar }
+
+    fun sincronizarAgora() { if (!sync.rodando()) sync.sincronizar() }
+
+    fun desconectarWhatsApp() { sync.desconectar(); conectado.value = false }
+
+    fun registrarSemResultado(q: String) { Prefs.registrarSemResultado(this, q); semResultado.value = Prefs.semResultado(this) }
+
+    fun abrirWhatsAppSo() { packageManager.getLaunchIntentForPackage("com.whatsapp")?.let { startActivity(it) } }
 
     fun limparHistorico() { Prefs.limparHistorico(this); recentes.value = emptyList() }
 
@@ -102,6 +141,7 @@ class MainActivity : ComponentActivity() {
     fun enviar(q: String, resultado: List<Fig>, primeira: Fig?) {
         if (resultado.isEmpty() || enviando.value) return
         val res = if (primeira == null) resultado else listOf(primeira) + resultado.filter { it.n != primeira.n }
+        primeira?.let { Prefs.registrarUso(this, it.arquivo) }
         enviando.value = true
         Prefs.guardarBusca(this, q); recentes.value = Prefs.recentes(this)
         io.execute {
@@ -155,7 +195,7 @@ class MainActivity : ComponentActivity() {
         io.execute {
             try {
                 importarDe(contentResolver.openInputStream(uri)!!)
-                runOnUiThread { total.intValue = Store.figs(this).size; sugestoes.value = Store.sugestoes(this); importando.value = false }
+                runOnUiThread { atualizarListas(); importando.value = false }
             } catch (e: Exception) {
                 runOnUiThread { importando.value = false; aviso.value = "Não deu pra ler esse arquivo. Confira se é o .zip de figurinhas." }
             }
@@ -210,4 +250,4 @@ class MainActivity : ComponentActivity() {
     fun diagnostico(): String = Store.lerLog(this)
 }
 
-enum class Tela { Configurar, Busca, Sugerir }
+enum class Tela { Configurar, Busca, Sugerir, Conectar }

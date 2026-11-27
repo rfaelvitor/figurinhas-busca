@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.io.File
 import java.text.Normalizer
 
-data class Fig(val n: Int, val arquivo: String, val animada: Boolean, val texto: String, val tags: String) {
+data class Fig(val n: Int, val arquivo: String, val animada: Boolean, val texto: String, val tags: String, val id: String = "", val origem: String = "") {
     val nt = Store.norm(texto)
     val ng = Store.norm(tags)
     @Volatile var ne: String? = null
@@ -40,10 +40,20 @@ object Store {
         val arr = JSONObject(f.readText()).getJSONArray("itens")
         val lista = (0 until arr.length()).map {
             val o = arr.getJSONObject(it)
-            Fig(o.getInt("n"), o.getString("arquivo"), o.getBoolean("animada"), o.optString("texto"), o.optString("tags"))
+            Fig(o.getInt("n"), o.getString("arquivo"), o.getBoolean("animada"), o.optString("texto"), o.optString("tags"), o.optString("id"), o.optString("origem"))
         }
         cache = lista
         return lista
+    }
+
+    @Synchronized fun salvarIndice(ctx: Context, lista: List<Fig>) {
+        val arr = JSONArray()
+        for (f in lista) arr.put(JSONObject().put("n", f.n).put("arquivo", f.arquivo).put("animada", f.animada)
+            .put("texto", f.texto).put("tags", f.tags).put("id", f.id).put("origem", f.origem))
+        val tmp = File(ctx.filesDir, "indice.tmp")
+        tmp.writeText(JSONObject().put("versao", 2).put("itens", arr).toString())
+        tmp.renameTo(File(ctx.filesDir, "indice.json"))
+        limparCache()
     }
 
     fun limparCache() { cache = null; Vetores.limpar() }
@@ -86,7 +96,12 @@ object Store {
         "Preguiça" to "preguica cansado sono dormindo nao quero trabalhar",
         "Raiva" to "bravo raiva irritado puto nervoso",
         "Amor" to "amor coracao apaixonado carinho beijo",
-        "Tanto faz" to "indiferente tanto faz nem ligo por mim sei la"
+        "Tanto faz" to "indiferente tanto faz nem ligo por mim sei la",
+        "Bom dia" to "bom dia manha acordando cafe",
+        "Boa noite" to "boa noite dormir sono estrelas",
+        "Trabalho" to "trabalho segunda chefe cansado atestado",
+        "Dinheiro" to "dinheiro pix grana rico pobre",
+        "Fome" to "fome comida comendo lanche almoco"
     )
 
     // sugere figurinhas pra responder uma conversa colada, puxando pro que a pessoa quer passar
@@ -158,6 +173,11 @@ object Store {
         val todas = figs(ctx)
         val q = norm(consulta)
         if (q.isEmpty()) return todas
+        // tocou num clima (Ironia, Preguica...): usa a mesma logica da sugestao por conversa
+        INTENCOES.keys.firstOrNull { norm(it) == q }?.let { k ->
+            val porClima = sugerir(ctx, "", k)
+            if (porClima.isNotEmpty()) return porClima
+        }
         // parte de sentido (ia): parecido mesmo sem palavra em comum
         val vq = if (Vetores.carregar(ctx)) Vetores.vetorTexto(q, PARADAS) else null
         val r = todas.map { f ->

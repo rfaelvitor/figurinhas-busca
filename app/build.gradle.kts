@@ -25,7 +25,12 @@ android {
         }
     }
     buildTypes {
-        getByName("debug") { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("debug") }
+        getByName("debug") {
+            // compacta o app (tira codigo nao usado)
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
@@ -45,4 +50,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.animation:animation")
+    // leitura de texto e do conteudo das figurinhas novas, no proprio celular
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 }

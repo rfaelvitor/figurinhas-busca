@@ -1,0 +1,2 @@
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
+-keep class br.rafael.figurinhas.Sync$Ponte { *; }

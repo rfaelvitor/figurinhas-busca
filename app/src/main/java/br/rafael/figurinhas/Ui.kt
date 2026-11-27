@@ -87,12 +87,19 @@ fun Tema(conteudo: @Composable () -> Unit) {
 @Composable
 fun App(a: MainActivity) {
     Tema {
+        Box(Modifier.fillMaxSize()) {
+        // o whatsapp web precisa estar "na tela" pra carregar as imagens; fica por baixo, invisivel
+        val webNaTela = a.tela.value == Tela.Conectar && a.sync.estado.value in setOf(Sync.Estado.Conectando, Sync.Estado.Desconectado)
+        if (a.sync.rodando() && !webNaTela) {
+            AndroidView(factory = { a.sync.soltar(); a.sync.web }, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.02f })
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Crossfade(targetState = a.tela.value, animationSpec = tween(250), label = "tela") { t ->
                 when (t) {
                     Tela.Configurar -> Configurar(a)
                     Tela.Busca -> Busca(a)
                     Tela.Sugerir -> Sugerir(a)
+                    Tela.Conectar -> Conectar(a)
                 }
             }
             a.aviso.value?.let { msg ->
@@ -100,6 +107,7 @@ fun App(a: MainActivity) {
                     confirmButton = { TextButton(onClick = { a.aviso.value = null }) { Text("Ok") } },
                     text = { Text(msg) })
             }
+        }
         }
     }
 }
@@ -201,16 +209,20 @@ private fun PassoOla() {
 
 @Composable
 private fun PassoFavoritas(a: MainActivity) {
-    TituloGrande("Traga suas favoritas", "O app guarda uma cópia delas pra buscar num piscar de olhos.")
+    TituloGrande("Traga suas favoritas", "O app conecta no seu WhatsApp como mais um aparelho e copia a aba Favoritas. Só lê, nunca manda nada.")
     val ok = a.total.intValue > 0
+    val st = a.sync.estado.value
     CartaoEstado(
-        feito = ok, titulo = if (ok) "${a.total.intValue} figurinhas prontas" else "Importar arquivo",
-        texto = if (ok) null else "O .zip de figurinhas que você recebeu.",
-        acao = if (a.importando.value) "Importando…" else if (ok) "Trocar arquivo" else "Escolher arquivo",
-        carregando = a.importando.value, onClick = { a.escolherArquivo() }
+        feito = ok, titulo = if (ok) "${a.total.intValue} figurinhas prontas" else "Conectar meu WhatsApp",
+        texto = if (a.sync.rodando()) a.sync.mensagem.value.ifBlank { "Conectando…" } else if (ok) "Novas favoritas entram sozinhas daqui pra frente." else "Leva uns 2 minutos na primeira vez.",
+        acao = if (ok && a.conectado.value) null else if (a.sync.rodando()) "Ver andamento" else "Conectar",
+        carregando = false, onClick = { a.abrirConectar() }
     )
+    if (st == Sync.Estado.Erro || st == Sync.Estado.Desconectado) {
+        Spacer(Modifier.height(8.dp)); Text(a.sync.mensagem.value, color = MaterialTheme.colorScheme.error, fontSize = 15.sp)
+    }
     Spacer(Modifier.height(12.dp))
-    CartaoEstado(feito = false, titulo = "Conectar meu WhatsApp", texto = "Em breve: puxa suas favoritas sozinho.", acao = null, carregando = false, onClick = {})
+    TextButton(onClick = { a.escolherArquivo() }) { Text(if (a.importando.value) "Importando…" else "Ou importar um arquivo .zip") }
 }
 
 @Composable
@@ -314,6 +326,8 @@ private fun Busca(a: MainActivity) {
     LaunchedEffect(q, a.total.intValue) {
         delay(60)
         res = withContext(Dispatchers.Default) { a.buscar(q) }
+        // guarda a busca que nao achou nada (so depois de parar de digitar)
+        if (res.isEmpty() && q.trim().length >= 3) { delay(1800); a.registrarSemResultado(q) }
     }
     LaunchedEffect(Unit) { foco.requestFocus() }
 
@@ -332,6 +346,15 @@ private fun Busca(a: MainActivity) {
             }
         }
 
+        AnimatedVisibility(a.sync.rodando()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp, 16.dp, 0.dp)) {
+                Text(if (a.sync.total.intValue > 0) "Sincronizando favoritas… ${a.sync.feitas.intValue} de ${a.sync.total.intValue}" else "Sincronizando favoritas…",
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                if (a.sync.total.intValue > 0) LinearProgressIndicator(progress = { a.sync.feitas.intValue / a.sync.total.intValue.toFloat() }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp, 8.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextField(
                 value = q, onValueChange = { q = it },
@@ -372,15 +395,24 @@ private fun Busca(a: MainActivity) {
                     }
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
+                if (a.maisUsadas.value.isNotEmpty()) {
+                    Text("Mais usadas", Modifier.padding(20.dp, 10.dp, 20.dp, 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(a.maisUsadas.value, key = { it.n }) { f ->
+                            Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
+                                .clickable { a.enviar("", listOf(f), f) }.padding(5.dp)) { Figura(f.arquivo, Modifier.fillMaxSize()) }
+                        }
+                    }
+                }
                 if (a.sugestoes.value.isNotEmpty()) {
-                    Text("Sugestões", Modifier.padding(20.dp, 10.dp, 20.dp, 2.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("O que você quer passar?", Modifier.padding(20.dp, 10.dp, 20.dp, 2.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Chips(a.sugestoes.value, null) { q = it }
                 }
                 Legenda("Suas ${a.total.intValue} favoritas · toque pra mandar")
                 Grade(res, { a.enviar("", res, it) }, { detalhe = it })
             }
             res.isEmpty() -> {
-                Vazio("Nada com \"$q\"", "Tente o que aparece na figurinha ou o que ela sente. Umas ideias:")
+                Vazio("Nada com \"$q\"", "Tente o que aparece na figurinha ou o clima que você quer passar:")
                 Chips(a.sugestoes.value, null) { q = it }
             }
             else -> {
@@ -477,11 +509,18 @@ private fun Grade(lista: List<Fig>, tocar: (Fig) -> Unit, segurar: (Fig) -> Unit
 @Composable
 private fun Ajustes(a: MainActivity, fechar: () -> Unit) {
     var diag by remember { mutableStateOf<String?>(null) }
+    var semRes by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     ModalBottomSheet(onDismissRequest = fechar) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Text("Ajustes", Modifier.padding(24.dp, 0.dp, 24.dp, 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            ItemAjuste(Icons.Default.Refresh, "Importar figurinhas", "${a.total.intValue} no app agora") { a.escolherArquivo() }
+            if (a.conectado.value) {
+                ItemAjuste(Icons.Default.Refresh, "Sincronizar favoritas agora",
+                    if (a.sync.rodando()) "Sincronizando…" else "${a.total.intValue} no app · automático a cada 6 horas") { fechar(); a.sincronizarAgora() }
+            } else {
+                ItemAjuste(Icons.Default.Refresh, "Conectar meu WhatsApp", "Pra novas favoritas entrarem sozinhas") { fechar(); a.abrirConectar() }
+            }
+            ItemAjuste(Icons.Default.Add, "Importar arquivo .zip", "${a.total.intValue} figurinhas no app agora") { a.escolherArquivo() }
             ItemAjuste(Icons.Default.Add, "Adicionar pacotes ao WhatsApp",
                 if (a.pacotesOk.value) "Já adicionados" else "Faltando, toque pra adicionar") { a.adicionarPacotes {} }
             ItemAjuste(Icons.Default.Delete, "Limpar histórico de buscas",
@@ -490,10 +529,17 @@ private fun Ajustes(a: MainActivity, fechar: () -> Unit) {
                 if (a.autoOk.value) "Ligada: o app toca em Atualizar por você" else "Desligada, toque pra ligar") { a.abrirAcessibilidade() }
             ItemAjuste(Icons.Default.Search, "Atalho nas configurações rápidas", "Abre a busca por cima de qualquer app") { a.pedirAtalho() }
             ItemAjuste(Icons.Default.PlayArrow, "Ver a configuração inicial", "O passo a passo que um usuário novo vê") { fechar(); a.tela.value = Tela.Configurar }
+            if (a.semResultado.value.isNotEmpty()) ItemAjuste(Icons.Default.Warning, "Buscas sem resultado", "${a.semResultado.value.size} guardadas no celular") { semRes = true }
+            if (a.conectado.value) ItemAjuste(Icons.Default.Close, "Desconectar o WhatsApp", "Apaga a sessão do WhatsApp Web no app") { a.desconectarWhatsApp() }
             ItemAjuste(Icons.Default.Info, "Diagnóstico", "Registro do que o WhatsApp pediu ao app") { diag = a.diagnostico() }
             Text("Versão ${Updater.versaoAtual(ctx)}", Modifier.padding(24.dp, 12.dp), style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+    if (semRes) {
+        AlertDialog(onDismissRequest = { semRes = false }, title = { Text("Buscas sem resultado") },
+            text = { Text(a.semResultado.value.joinToString("\n"), Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = { semRes = false }) { Text("Fechar") } })
     }
     diag?.let { d ->
         AlertDialog(onDismissRequest = { diag = null },
@@ -516,6 +562,67 @@ private fun ItemAjuste(icone: androidx.compose.ui.graphics.vector.ImageVector, t
         modifier = Modifier.padding(horizontal = 8.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
+}
+
+// ---------- conectar o whatsapp ----------
+
+@Composable
+private fun Conectar(a: MainActivity) {
+    val st = a.sync.estado.value
+    androidx.activity.compose.BackHandler { a.sairDeConectar() }
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        Row(Modifier.padding(4.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { a.sairDeConectar() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }
+            Text("Conectar meu WhatsApp", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+        if (st == Sync.Estado.Conectando || st == Sync.Estado.Desconectado) {
+            Column(Modifier.padding(16.dp, 0.dp, 16.dp, 8.dp).clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer).padding(16.dp)) {
+                Text("1. Abaixo, toque em \"Entrar com número de telefone\" e digite seu número.", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("2. Guarde o código de 8 letras que aparecer.", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("3. No WhatsApp: ⋮ → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone, e digite o código.", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Spacer(Modifier.height(8.dp))
+                FilledTonalButton(onClick = { a.abrirWhatsAppSo() }) { Text("Abrir WhatsApp") }
+            }
+            AndroidView(factory = { a.sync.soltar(); a.sync.web }, modifier = Modifier.weight(1f).fillMaxWidth())
+        } else {
+            Column(Modifier.fillMaxSize().padding(28.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                when (st) {
+                    Sync.Estado.Pronto -> {
+                        Box(Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(36.dp))
+                        }
+                        Spacer(Modifier.height(20.dp))
+                        Text("Favoritas sincronizadas", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(8.dp))
+                        Text(a.sync.mensagem.value, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(24.dp))
+                        Button(onClick = { a.sairDeConectar() }, Modifier.height(52.dp)) { Text("Continuar", fontSize = 17.sp) }
+                    }
+                    Sync.Estado.Erro -> {
+                        Text("Não deu certo", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.height(8.dp))
+                        Text(a.sync.mensagem.value, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(24.dp))
+                        Button(onClick = { a.sincronizarAgora() }, Modifier.height(52.dp)) { Text("Tentar de novo", fontSize = 17.sp) }
+                    }
+                    else -> {
+                        CircularProgressIndicator(Modifier.size(48.dp))
+                        Spacer(Modifier.height(20.dp))
+                        Text(a.sync.mensagem.value.ifBlank { "Conectado. Buscando suas favoritas…" }, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        if (a.sync.total.intValue > 0) {
+                            Spacer(Modifier.height(16.dp))
+                            LinearProgressIndicator(progress = { a.sync.feitas.intValue / a.sync.total.intValue.toFloat() }, modifier = Modifier.fillMaxWidth(.8f))
+                            Spacer(Modifier.height(8.dp))
+                            Text("${a.sync.feitas.intValue} de ${a.sync.total.intValue} · ${a.sync.novas.intValue} novas", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text("Pode deixar o app aberto. Na primeira vez leva uns 2 minutos.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ---------- sugestao pela conversa ----------
