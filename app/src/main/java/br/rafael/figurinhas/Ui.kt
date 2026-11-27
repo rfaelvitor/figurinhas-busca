@@ -595,7 +595,7 @@ private fun Ajustes(a: MainActivity, fechar: () -> Unit) {
             Grupo("WhatsApp") {
                 ItemAjuste(Icons.Default.Add, "Pacotes 🔍 no WhatsApp", if (a.pacotesOk.value) "Adicionados" else "Faltando, toque pra adicionar",
                     ok = a.pacotesOk.value) { a.adicionarPacotes {} }
-                ItemAjuste(Icons.Default.CheckCircle, "Confirmação automática",
+                ItemAjuste(Icons.Default.ThumbUp, "Confirmação automática",
                     if (a.autoOk.value) "Ligada: o app toca em Atualizar por você" else "Desligada, toque pra ligar", ok = a.autoOk.value) { a.abrirAcessibilidade() }
                 ItemAjuste(Icons.Default.Search, "Atalho na barra de notificações", "Abre a busca por cima de qualquer app") { a.pedirAtalho() }
                 if (a.conectado.value) ItemAjuste(Icons.Default.Close, "Desconectar o WhatsApp Web", "Apaga a sessão guardada no app") { a.desconectarWhatsApp() }
