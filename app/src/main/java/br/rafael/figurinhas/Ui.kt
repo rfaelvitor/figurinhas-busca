@@ -268,7 +268,8 @@ private fun EscolhaSom(a: MainActivity, q: String, res: List<Fig>, f: Fig) {
     val conectado = a.conectado.value
     // ja vai abrindo o whatsapp web por tras enquanto a pessoa escolhe
     DisposableEffect(f) { a.sync.preparar(); onDispose { Ouvir.parar() } }
-    val conversas = a.sync.listaConversas.value.filterNot { Regex("\\((you|você|voce)\\)", RegexOption.IGNORE_CASE).containsMatchIn(it) }.take(5)
+    val conversas = a.sync.listaConversas.value.filterNot { Regex("\\((you|você|voce)\\)", RegexOption.IGNORE_CASE).containsMatchIn(it) }.take(3)
+    var outra by remember { mutableStateOf("") }
     fun fechar() { a.escolhaSom.value = null; a.sync.largar() }
     androidx.compose.ui.window.Dialog(onDismissRequest = { fechar() }) {
         Column(
@@ -276,34 +277,34 @@ private fun EscolhaSom(a: MainActivity, q: String, res: List<Fig>, f: Fig) {
                 .verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(Modifier.size(110.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest).padding(8.dp)) {
+            Box(Modifier.size(96.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest).padding(8.dp)) {
                 Figura(f.arquivo, Modifier.fillMaxSize())
                 Text("🔊", Modifier.align(Alignment.TopStart), fontSize = 16.sp)
             }
             if (audio != null) TextButton(onClick = { Ouvir.tocar(ctx, f) }) { Text("▶  Ouvir") }
-            Spacer(Modifier.height(10.dp))
-            Text("Essa tem som", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(16.dp))
-            if (conectado) {
-                Text("Mandar com som pra:", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = { a.mandarComSom(f, "") }, Modifier.fillMaxWidth().height(50.dp)) { Text("Pra mim mesmo", fontSize = 16.sp) }
-                conversas.forEach { c ->
-                    Spacer(Modifier.height(8.dp))
-                    FilledTonalButton(onClick = { a.mandarComSom(f, c) }, Modifier.fillMaxWidth().height(50.dp)) {
+            Spacer(Modifier.height(8.dp))
+            Text("Mandar com som pra", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(14.dp))
+            if (!conectado) {
+                Text("Conecte seu WhatsApp nos Ajustes primeiro.", fontSize = 16.sp, textAlign = TextAlign.Center)
+            } else {
+                conversas.forEachIndexed { i, c ->
+                    if (i > 0) Spacer(Modifier.height(8.dp))
+                    val cor = if (i == 0) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
+                    Button(onClick = { a.mandarComSom(f, c) }, Modifier.fillMaxWidth().height(50.dp), colors = cor) {
                         Text(c, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                 }
-                if (conversas.isEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("Suas conversas recentes aparecem aqui depois da primeira vez.", fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                }
-            } else {
-                Text("Pra mandar com som, conecte seu WhatsApp nos Ajustes.", fontSize = 16.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = outra, onValueChange = { outra = it }, singleLine = true,
+                    placeholder = { Text("Outra conversa: nome do contato") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (outra.isNotBlank()) a.mandarComSom(f, outra.trim()) }),
+                    trailingIcon = { if (outra.isNotBlank()) TextButton(onClick = { a.mandarComSom(f, outra.trim()) }) { Text("Mandar") } }
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = { a.escolhaSom.value = null; a.sync.largar(); a.enviar(q, res, f, semSom = true) }) { Text("Mandar sem som, pelo pacote") }
         }
     }
 }

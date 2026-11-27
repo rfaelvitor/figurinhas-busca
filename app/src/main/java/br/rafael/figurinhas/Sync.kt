@@ -86,10 +86,6 @@ class Sync(private val a: Activity) {
                     if (modo == "conectar") view.evaluateJavascript(JS_ESPERA_LOGIN, null)
                     if (modo == "sincronizar") { modo = "rodando"; view.evaluateJavascript(JS_COLETA.replace("@GANCHO@", JS_GANCHO), null) }
                     if (modo == "preparar" && url.startsWith("https://web.whatsapp.com")) view.evaluateJavascript(JS_PRONTO.replace("@GANCHO@", JS_GANCHO), null)
-                    if (modo == "direto") {
-                        modo = "enviando"
-                        view.evaluateJavascript(JS_ENVIAR.replace("@GANCHO@", JS_GANCHO).replace("@ALVO@", "'@direto'").replace("@ID@", org.json.JSONObject.quote(idEnvio)), null)
-                    }
                 }
             }
         }
@@ -112,7 +108,7 @@ class Sync(private val a: Activity) {
         webPronto = false
         estado.value = Estado.Preparando
         modo = "preparar"
-        web.loadUrl("https://web.whatsapp.com/")
+        web.loadUrl("https://web.whatsapp.com/send?phone=${Prefs.meuNumero(a)}")
     }
 
     fun largar() {
@@ -132,8 +128,8 @@ class Sync(private val a: Activity) {
         if (rodando()) { fim(false, "Espere a sincronização terminar."); return }
         if (Prefs.meuNumero(a).isBlank()) { fim(false, "Conecte o WhatsApp nos Ajustes primeiro."); return }
         aoEnviar = fim
-        enviandoPara.value = alvo.ifBlank { "você mesmo" }
-        Store.log(a, "envio com som: ${f.id} pra ${if (alvo.isBlank()) "mim" else "uma conversa"}")
+        enviandoPara.value = alvo
+        Store.log(a, "envio com som: ${f.id}")
         val js = JS_ENVIAR.replace("@GANCHO@", JS_GANCHO).replace("@ALVO@", org.json.JSONObject.quote(alvo)).replace("@ID@", org.json.JSONObject.quote(f.id))
         val rodar = { modo = "enviando"; web.evaluateJavascript(js, null); Unit }
         val estava = estado.value
@@ -142,7 +138,7 @@ class Sync(private val a: Activity) {
         if (webPronto) rodar()
         else {
             envioPendente = rodar
-            if (estava != Estado.Preparando) { webPronto = false; modo = "preparar"; web.loadUrl("https://web.whatsapp.com/") }
+            if (estava != Estado.Preparando) { webPronto = false; modo = "preparar"; web.loadUrl("https://web.whatsapp.com/send?phone=${Prefs.meuNumero(a)}") }
         }
         idEnvio = f.id
     }
@@ -157,7 +153,7 @@ class Sync(private val a: Activity) {
         estado.value = Estado.Parado
         val cb = aoEnviar; aoEnviar = null
         cb?.invoke(ok, msg)
-        Ouvir.pendentes(a)
+        (a as? MainActivity)?.pedirTranscricao()
     }
 
     fun soltar() { (web.parent as? ViewGroup)?.removeView(web) }
@@ -241,15 +237,12 @@ class Sync(private val a: Activity) {
                 if (estado.value == Estado.Preparando) { if (r == "desconectado") Prefs.marcarConectado(a, false); largar(); return@runOnUiThread }
                 when {
                     r == "ok" -> terminarEnvio(true, "")
-                    r == "abrir_eu" -> {
-                        // a conversa com voce mesmo nao estava na lista: abre direto pelo numero
-                        modo = "direto"
-                        web.loadUrl("https://web.whatsapp.com/send?phone=${Prefs.meuNumero(a)}")
-                    }
                     r == "desconectado" -> { Prefs.marcarConectado(a, false); terminarEnvio(false, "O WhatsApp Web desconectou. Conecte de novo nos Ajustes.") }
-                    r == "sem_conversa" -> terminarEnvio(false, "Não achei essa conversa no WhatsApp Web.")
+                    r == "sem_conversa" -> terminarEnvio(false, "Não achei uma conversa com esse nome no WhatsApp Web.")
                     r == "conversa_errada" -> terminarEnvio(false, "Abriu outra conversa, então não mandei nada.")
-                    r == "nao_achei" -> terminarEnvio(false, "Essa figurinha ainda não está nas favoritas do WhatsApp Web. No WhatsApp, desfavorite e favorite ela de novo uma vez, e tente outra vez.")
+                    r == "sem_mensagem" -> terminarEnvio(false, "Pra mandar com som, ela precisa estar uma vez na conversa com você mesmo. No WhatsApp, mande essa figurinha pra você (pela aba de favoritas) e tente de novo.")
+                    r == "conversa_ambigua" -> terminarEnvio(false, "Achei mais de uma conversa com esse nome. Escreva o nome completo.")
+                    r == "sem_encaminhar" || r == "sem_busca" || r == "sem_botao_enviar" -> terminarEnvio(false, "O WhatsApp Web não mostrou o botão de encaminhar ($r). Me mande o diagnóstico.")
                     else -> terminarEnvio(false, "Não deu pra mandar ($r).")
                 }
             }
@@ -407,18 +400,23 @@ window.__figDesde = function(t, re){ return window.__figBlobs.filter(function(x)
 window.__figB64 = async function(b){ var u8 = new Uint8Array(await b.arrayBuffer()), s = ''; for (var j = 0; j < u8.length; j += 32768) s += String.fromCharCode.apply(null, u8.subarray(j, j + 32768)); return btoa(s); };
 window.__figHash = async function(u8){ var dg = new Uint8Array(await crypto.subtle.digest('SHA-256', u8)); return Array.prototype.slice.call(dg, 0, 8).map(function(x){ return x.toString(16).padStart(2, '0'); }).join(''); };
 window.__figRotulos = function(el){ return Array.prototype.slice.call(el.querySelectorAll('[aria-label],[data-icon],[title],img[alt]')).map(function(e){ return (e.getAttribute('aria-label') || e.getAttribute('data-icon') || e.getAttribute('title') || e.getAttribute('alt') || '').slice(0, 40); }).filter(function(x){ return x; }).join('|'); };
-// toca o som de uma mensagem (mudo) e devolve o audio que o whatsapp web decifrou
+// toca o som de uma mensagem (mudo) e devolve o audio que o whatsapp web decifrou.
+// o audio pode ter sido criado antes (quando a mensagem apareceu), entao escolhe o mais perto da imagem dela
+window.__figUsados = window.__figUsados || {};
 window.__figSomDaMensagem = async function(msg){
+  var im = msg.querySelector('img');
+  var daImg = im ? window.__figBlobs.find(function(x){ return x.u === im.src; }) : null;
   var bt = Array.prototype.slice.call(msg.querySelectorAll('[aria-label],[data-icon]')).find(function(e){ return /som|sound|audio|áudio|play|reproduz|tocar|mute|mudo|volume|speaker/i.test((e.getAttribute('aria-label') || '') + ' ' + (e.getAttribute('data-icon') || '')); });
-  var t0 = Date.now();
-  if (bt) { (bt.closest('button,[role=button]') || bt).click(); } else { var im = msg.querySelector('img'); if (im) im.click(); }
+  if (bt) (bt.closest('button,[role=button]') || bt).click();
   await new Promise(function(r){ setTimeout(r, 3000); });
-  var achados = window.__figDesde(t0, /audio|video|ogg|mpeg|mp4|opus|aac/i);
-  var el = msg.querySelector('audio[src],video[src]');
-  if (!achados.length && el && el.src.indexOf('blob:') === 0) { return await (await fetch(el.src)).blob(); }
-  if (!achados.length) return null;
-  achados.sort(function(x, y){ return y.b.size - x.b.size; });
-  return achados[0].b;
+  var livres = function(re){ return window.__figBlobs.filter(function(x){ return re.test(x.b.type || '') && !window.__figUsados[x.u]; }); };
+  var c = livres(/audio|ogg|opus|aac|mpeg/i);
+  if (!c.length) c = livres(/video|mp4/i);
+  if (!c.length) return null;
+  var ref = daImg ? daImg.t : Date.now();
+  c.sort(function(x, y){ return Math.abs(x.t - ref) - Math.abs(y.t - ref); });
+  window.__figUsados[c[0].u] = 1;
+  return c[0].b;
 };
 """
 
@@ -448,62 +446,74 @@ window.__figSomDaMensagem = async function(msg){
   @GANCHO@
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   async function esperar(fn, ms){ var t0 = Date.now(); while (Date.now() - t0 < ms){ try { var v = fn(); if (v) return v; } catch(e){} await dormir(300); } return null; }
-  function porRotulo(re, raiz){ return Array.prototype.slice.call((raiz||document).querySelectorAll('[aria-label]')).find(function(e){ return re.test(e.getAttribute('aria-label')); }); }
+  var hashes = {};
+  async function hashDe(im){ if (hashes[im.src]) return hashes[im.src]; var h = await window.__figHash(new Uint8Array(await (await (await fetch(im.src)).blob()).arrayBuffer())); hashes[im.src] = h; return h; }
   try {
-    if (ALVO !== '@direto') {
-      var achar = function(){ return Array.prototype.slice.call(document.querySelectorAll('#pane-side span[title]')).find(function(s){ var t = s.getAttribute('title'); return ALVO === '' ? /\((you|você|voce)\)/i.test(t) : t === ALVO; }); };
-      var nome = await esperar(achar, 15000);
-      if (!nome) { A.envio(ALVO === '' ? 'abrir_eu' : 'sem_conversa'); return; }
-      var linha = nome.closest('[role="row"],[role="listitem"]') || nome;
-      ['mousedown', 'mouseup', 'click'].forEach(function(ev){ linha.dispatchEvent(new MouseEvent(ev, {bubbles: true, cancelable: true, view: window})); });
-    }
     var rodape = await esperar(function(){ return document.querySelector('#main footer'); }, 40000);
     if (!rodape) { A.envio('sem_rodape'); return; }
+    await dormir(1200);
+    A.log('envio: conversa com voce aberta, procurando a figurinha com som');
+    // procura de baixo pra cima, subindo a conversa algumas vezes
+    var msg = null;
+    for (var volta = 0; volta < 10 && !msg; volta++) {
+      var msgs = Array.prototype.slice.call(document.querySelectorAll('#main [data-id]')).reverse();
+      for (var k = 0; k < msgs.length && !msg; k++) {
+        var im = msgs[k].querySelector('img');
+        if (!im || im.src.indexOf('blob:') !== 0) continue;
+        if (!/sound|som|áudio|audio/i.test(window.__figRotulos(msgs[k]))) continue;
+        if (await hashDe(im) === ID) msg = msgs[k];
+      }
+      if (!msg && msgs.length) { msgs[msgs.length - 1].scrollIntoView({block: 'start'}); await dormir(1800); }
+    }
+    if (!msg) { A.envio('sem_mensagem'); return; }
+    msg.scrollIntoView({block: 'center'}); await dormir(500);
+    // aproveita pra pegar o audio (fica mudo), pra busca pelo que e falado
+    if (A.precisaSom(ID)) {
+      try { var som = await window.__figSomDaMensagem(msg); if (som) A.som(ID, await window.__figB64(som), som.type || ''); else A.log('envio: audio nao veio'); } catch(e3) { A.log('envio: audio falhou ' + e3); }
+    }
+    var linha = msg.closest('[role="row"]') || msg;
+    ['mouseover', 'mouseenter', 'mousemove'].forEach(function(ev){ msg.dispatchEvent(new MouseEvent(ev, {bubbles: true})); });
+    await dormir(700);
+    var enc = Array.prototype.slice.call(linha.querySelectorAll('[aria-label]')).find(function(e){ return /forward|encaminh/i.test(e.getAttribute('aria-label')); });
+    if (enc) { (enc.closest('button,[role=button]') || enc).click(); }
+    else {
+      var menu = Array.prototype.slice.call(linha.querySelectorAll('[aria-label]')).find(function(e){ return /context menu|menu de contexto|more options|mais op|^menu$/i.test(e.getAttribute('aria-label')); });
+      if (!menu) { A.log('envio: rotulos da linha ' + window.__figRotulos(linha)); A.envio('sem_encaminhar'); return; }
+      (menu.closest('button,[role=button]') || menu).click();
+      var item = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('li, [role="menuitem"], [role="button"]')).find(function(e){ return /^(forward|encaminhar)/i.test((e.textContent || '').trim()); }); }, 5000);
+      if (!item) { A.envio('sem_encaminhar'); return; }
+      item.click();
+    }
+    var dlg = await esperar(function(){ return document.querySelector('[role="dialog"]'); }, 8000);
+    if (!dlg) { A.envio('sem_encaminhar'); return; }
+    await dormir(800);
+    var caixa = dlg.querySelector('[contenteditable="true"]') || dlg.querySelector('input[type="text"], input:not([type])');
+    if (!caixa) { A.log('envio: dialogo ' + window.__figRotulos(dlg)); A.envio('sem_busca'); return; }
+    caixa.focus();
+    if (caixa.isContentEditable) document.execCommand('insertText', false, ALVO);
+    else { var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(caixa, ALVO); caixa.dispatchEvent(new Event('input', {bubbles: true})); }
+    await dormir(1800);
+    var alvoMin = ALVO.toLowerCase();
+    var nomes = function(){ return Array.prototype.slice.call(dlg.querySelectorAll('span[title]')).filter(function(s){ return s.getAttribute('title').trim().length; }); };
+    var certo = await esperar(function(){ return nomes().find(function(s){ return s.getAttribute('title').trim().toLowerCase() === alvoMin; }); }, 6000);
+    if (!certo) {
+      var parecidos = nomes().filter(function(s){ return s.getAttribute('title').toLowerCase().indexOf(alvoMin) >= 0; });
+      var unicos = parecidos.map(function(s){ return s.getAttribute('title'); }).filter(function(v, i, arr){ return arr.indexOf(v) === i; });
+      if (unicos.length === 1) certo = parecidos[0];
+      else { A.log('envio: ' + unicos.length + ' conversas parecidas'); A.envio(unicos.length ? 'conversa_ambigua' : 'sem_conversa'); return; }
+    }
+    A.log('envio: escolhi a conversa');
+    (certo.closest('[role="listitem"],[role="row"],[role="checkbox"],[role="button"],button') || certo).click();
     await dormir(900);
-    if (ALVO && ALVO !== '@direto') {
-      var cab = document.querySelector('#main header');
-      if (!cab || cab.textContent.indexOf(ALVO) < 0) { A.envio('conversa_errada'); return; }
-    }
-    A.log('envio: conversa aberta');
-    var emoji = await esperar(function(){ return porRotulo(/emoji/i, rodape); }, 15000);
-    if (!emoji) { A.envio('sem_botao_emoji'); return; }
-    emoji.click(); await dormir(1200);
-    var aba = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('[role="tab"]')).find(function(e){ return /sticker|figurinha|pegatina/i.test((e.getAttribute('aria-label')||'') + e.textContent); }); }, 15000);
-    if (!aba) { A.envio('sem_aba_figurinhas'); return; }
-    aba.click(); await dormir(1800);
-    var fav = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('button[aria-label]')).find(function(e){ return /^(favorite|favorites|favorita|favoritas|favorito|favoritos)$/i.test(e.getAttribute('aria-label').trim()); }); }, 15000);
-    if (!fav) { A.envio('sem_favoritas'); return; }
-    fav.click(); await dormir(2000);
-    var itens = await esperar(function(){ var l = document.querySelectorAll('[data-testid="sticker-item"]'); return l.length ? Array.prototype.slice.call(l) : null; }, 20000);
-    if (!itens) { A.envio('nao_achei'); return; }
-    var antes = document.querySelectorAll('#main [data-id]').length;
-    for (var i = 0; i < itens.length; i++) {
-      var it = itens[i];
-      it.scrollIntoView({block: 'center'});
-      var img = await esperar(function(){ var x = it.querySelector('img'); return (x && x.complete && x.naturalWidth > 0 && x.src.indexOf('blob:') === 0) ? x : null; }, 6000);
-      if (!img) continue;
-      var u8 = new Uint8Array(await (await (await fetch(img.src)).blob()).arrayBuffer());
-      if (await window.__figHash(u8) !== ID) continue;
-      A.log('envio: achei a figurinha (' + (i + 1) + ' de ' + itens.length + '), mandando');
-      (img.closest('[data-testid="sticker-item"]') || it).click();
-      var foi = await esperar(function(){ return document.querySelectorAll('#main [data-id]').length > antes; }, 8000);
-      A.log('envio: ' + (foi ? 'mensagem apareceu na conversa' : 'nao vi a mensagem aparecer'));
-      // aproveita a mensagem que acabou de sair pra pegar o audio (fica mudo) e entender o que e falado
-      try {
-        var msgs = document.querySelectorAll('#main [data-id]'), ult = msgs[msgs.length - 1];
-        if (ult) {
-          A.log('envio: rotulos da mensagem ' + window.__figRotulos(ult));
-          if (A.precisaSom(ID)) {
-            var som = await window.__figSomDaMensagem(ult);
-            if (som) { A.som(ID, await window.__figB64(som), som.type || ''); A.marcaSom(ID); }
-            else A.log('envio: nao achei o audio na mensagem');
-          }
-        }
-      } catch(e3) { A.log('envio: audio falhou ' + e3); }
-      A.envio(foi ? 'ok' : 'ok');
-      return;
-    }
-    A.envio('nao_achei');
+    var mandar = await esperar(function(){
+      var d = document.querySelector('[role="dialog"]') || document;
+      return Array.prototype.slice.call(d.querySelectorAll('[aria-label],[data-icon]')).find(function(e){ return /^(send|enviar)$/i.test((e.getAttribute('aria-label') || '').trim()) || /^(send|wds-ic-send-filled)$/.test(e.getAttribute('data-icon') || ''); });
+    }, 6000);
+    if (!mandar) { A.log('envio: dialogo ' + window.__figRotulos(document.querySelector('[role="dialog"]') || document.body).slice(0, 300)); A.envio('sem_botao_enviar'); return; }
+    (mandar.closest('button,[role=button]') || mandar).click();
+    var fechou = await esperar(function(){ return !document.querySelector('[role="dialog"]'); }, 8000);
+    A.log('envio: ' + (fechou ? 'encaminhada' : 'dialogo nao fechou'));
+    A.envio('ok');
   } catch(e) { A.envio('erro: ' + e); }
 })();
 """
