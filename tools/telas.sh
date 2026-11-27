@@ -9,8 +9,8 @@ adb shell run-as $P mkdir -p files
 adb push demo.zip /data/local/tmp/demo.zip
 adb shell run-as $P cp /data/local/tmp/demo.zip files/demo.zip
 adb shell settings put global window_animation_scale 0
-foto() { sleep "$2"; adb exec-out screencap -p > "telas/$1.png"; }
-abrir() { adb shell am start -S -W -n $A "$@"; }
+foto() { sleep "$2"; timeout 30 adb exec-out screencap -p > "telas/$1.png"; }
+abrir() { timeout 40 adb shell am start -S -W -n $A "$@"; }
 
 abrir --es demo_importar demo.zip --es demo_tela configurar --ei demo_passo 0; foto 01_ola 4
 for p in 1 2 3 4; do abrir --es demo_tela configurar --ei demo_passo $p; foto 0$((p+1))_passo$p 3; done
@@ -26,6 +26,8 @@ adb shell cmd uimode night no
 abrir --es demo_tela sugerir --es demo_texto nossa_que_dia_incrivel_no_trabalho_hoje_adorei_ficar_3_horas_em_reuniao; foto 13_sugerir 5
 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
-abrir --es demo_tela conectar; foto 14_conectar 20
+timeout 20 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
+timeout 20 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
+abrir --es demo_tela conectar; foto 14_conectar 12; foto 15_conectar_depois 15
 adb shell run-as br.rafael.figurinhas cat files/diag.log > telas/diag.txt || true
 adb logcat -d -s AndroidRuntime:E > telas/erros.txt || true
