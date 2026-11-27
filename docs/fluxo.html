@@ -149,8 +149,8 @@ html{scroll-behavior:smooth}
 <header id="topo">
   <span class="eyebrow">Como o app funciona hoje</span>
   <h1>Figurinhas por dentro</h1>
-  <span class="atualizado">Atualizado em 27/11/2026, 12h00 (horário de Brasília)</span>
-  <p class="lead">Você digita o que a figurinha mostra, diz ou sente, o app acha entre as suas favoritas e coloca o resultado num pacote 🔍 dentro do WhatsApp, onde ela vai como figurinha de verdade, animada inclusive. Roda inteiro no seu celular, sem internet pra buscar. Hoje está em uso por você, com 256 favoritas importadas por arquivo; a sincronização automática ainda não existe.</p>
+  <span class="atualizado">Atualizado em 27/11/2026, 15h10 (horário de Brasília)</span>
+  <p class="lead">Você digita o que a figurinha mostra, diz ou sente, o app acha entre as suas favoritas e coloca o resultado num pacote 🔍 dentro do WhatsApp, onde ela vai como figurinha de verdade, animada inclusive. Roda inteiro no seu celular, sem internet pra buscar. Hoje está em uso por você, com 256 favoritas. A sincronização automática acabou de ser construída e ainda precisa do primeiro teste no seu celular.</p>
   <div class="legend" aria-label="Legenda">
     <span><i style="background:var(--auto)"></i>automático, sem IA</span>
     <span><i style="background:var(--ai)"></i>automático, com IA</span>
@@ -197,14 +197,27 @@ flowchart TD
   L --> N["Volta pro WhatsApp"]
   M --> N
   N --> O["Você envia pela aba 🔍"]
+  S["Sincroniza favoritas<br/>(WhatsApp Web no app, a cada 6h)"] -.-> E
   </pre></div>
 </section>
 
 <section aria-labelledby="fluxo">
   <h2 id="fluxo">O fluxo de uma busca</h2>
   <div class="clock"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-  <p><b>Quem dá a partida:</b> você, toda vez que quer mandar uma figurinha. Não tem nada agendado. As favoritas entram no app por um arquivo <code>dados.zip</code> que importamos uma vez; a sincronização sozinha é a próxima fase.</p></div>
+  <p><b>Quem dá a partida:</b> você, toda vez que quer mandar uma figurinha. A <b>sincronização das favoritas</b> roda sozinha quando você abre o app e a última foi há mais de 6 horas, ou na hora, pelos ajustes.</p></div>
   <ol class="flow">
+    <li class="st" data-k="ai">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="head"><span class="num">0</span><h3>Sincronizar as favoritas</h3><span class="tag ai">IA no celular</span></div>
+        <p>O app conecta no seu WhatsApp como <b>mais um aparelho</b> (WhatsApp Web escondido dentro dele, conectado uma vez pelo código por número de telefone). Abre a aba Favoritas na conversa com você mesmo, <b>copia as novas, tira as que você desfavoritou</b> e descreve cada nova no próprio celular: lê o texto escrito e reconhece o que aparece (gato, comida, festa...).</p>
+        <div class="meta"><span class="tool">WebView</span><span class="tool">ML Kit</span><span class="file">Sync.kt</span><span class="file">Descrever.kt</span></div>
+      </div>
+      <div class="outs">
+        <div class="out stop"><small>leitura incompleta</small>Se alguma figurinha não carregar, nada é apagado nessa rodada.</div>
+        <div class="out you"><small>te chama</small>Se o WhatsApp Web desconectar, o app pede pra conectar de novo.</div>
+      </div>
+    </li>
     <li class="st" data-k="you">
       <div class="dot"></div>
       <div class="body">
@@ -218,7 +231,7 @@ flowchart TD
       <div class="dot"></div>
       <div class="body">
         <div class="head"><span class="num">2</span><h3>Dizer o que quer</h3><span class="tag you">você</span></div>
-        <p>Digita o que a figurinha <b>mostra, diz ou sente</b> ("gato comendo", "aguardando o pix", "to cansado"). Sem buscas, aparecem os <b>recentes</b> (com Limpar) e <b>sugestões</b> tiradas das suas próprias figurinhas.</p>
+        <p>Digita o que a figurinha <b>mostra, diz ou sente</b> ("gato comendo", "aguardando o pix", "to cansado"). Sem buscas, aparecem os <b>recentes</b> (com Limpar), as <b>mais usadas</b> e os <b>climas</b> (Ironia, Preguiça, Bom dia, Dinheiro...), que buscam pelo sentido.</p>
         <div class="meta"><span class="tool">Jetpack Compose</span><span class="file">Ui.kt</span></div>
       </div>
       <div class="outs"><div class="out you"><small>sem ideia</small>"Sem ideia do que mandar?" abre a etapa 2b.</div></div>
@@ -317,7 +330,8 @@ flowchart TD
       <tr><td>Serviço de acessibilidade</td><td>Tocar em "Update" sozinho</td><td>Ligar uma vez; no Android 13+ liberar "configurações restritas"</td></tr>
       <tr><td>GitHub Actions</td><td>Compila o APK, gera os vetores, testa as telas num emulador</td><td>Repositório <code>rfaelvitor/figurinhas-busca</code> (público)</td></tr>
       <tr><td>Modelo de IA multilíngue (MiniLM)</td><td>Gera os vetores de sentido de 40 mil palavras, só no build</td><td>Nada; roda no GitHub</td></tr>
-      <tr><td>WhatsApp Web no Chrome</td><td>Foi de onde saíram as 257 favoritas</td><td>Chrome do notebook com a extensão Claude</td></tr>
+      <tr><td>WhatsApp Web dentro do app</td><td>Sincroniza as favoritas (só leitura)</td><td>Conectar uma vez pelo código por número de telefone</td></tr>
+      <tr><td>ML Kit (Google, no celular)</td><td>Lê o texto e reconhece o conteúdo das figurinhas novas</td><td>Nada; funciona sem internet</td></tr>
       <tr><td>Claude</td><td>Descreveu as favoritas e mantém o projeto</td><td>Conta compartilhada</td></tr>
     </tbody>
   </table></div>
@@ -327,7 +341,7 @@ flowchart TD
   <h2 id="como">Como foi construído</h2>
   <p class="sub">A ordem em que as coisas foram descobertas e feitas. Os primeiros passos ficam recolhidos; os mais recentes aparecem abertos.</p>
   <details class="hist">
-    <summary>Ver os 10 primeiros passos</summary>
+    <summary>Ver os 12 primeiros passos</summary>
     <ol class="build">
       <li><div><b>Ideia e primeira análise (26/11)</b><p>WhatsApp não aceita plugins e versões modificadas arriscam banir a conta. A primeira ideia foi um teclado com busca.</p></div></li>
       <li><div><b>Teclado descartado</b><p>Pelo teclado, figurinha animada chega parada no primeiro quadro. Como você precisa das animadas, a saída virou o pacote de figurinhas oficial.</p></div></li>
@@ -339,14 +353,15 @@ flowchart TD
       <li><div><b>App da versão 1 compilado na nuvem</b><p>Criei o repositório pelo seu GitHub (a API não deixava) e o GitHub Actions passou a gerar o APK. Converti as favoritas pro formato de pacote (512x512, limites de tamanho).</p><div class="meta"><span class="tool">GitHub Actions</span><span class="file">tools/preparar_pacote.py</span></div></div></li>
       <li><div><b>O pacote não atualizava</b><p>A tela de diagnóstico mostrou que o WhatsApp lia a versão nova mas nunca pedia as figurinhas de novo. Na versão 3, pedir pra "adicionar" o pacote outra vez fez ele recarregar. Teste 2 aprovado.</p><div class="meta"><span class="file">diag.log</span></div></div></li>
       <li><div><b>Atualizador e repositório público</b><p>O app passou a se atualizar pelas versões do GitHub, com um toque de confirmação do Android. Você deixou o repositório público no PC.</p><div class="meta"><span class="file">Updater.kt</span></div></div></li>
+      <li><div><b>Uso diário (versões 5 e 6)</b><p>Envio em um toque, atalho na barra, dicionário de sinônimos, figurinhas vazias de enchimento e ícone próprio.</p></div></li>
+      <li><div><b>Visual novo (versões 7 e 8)</b><p>Interface em Jetpack Compose com cores do ícone, configuração guiada pra usuário novo e ajustes na engrenagem.</p></div></li>
     </ol>
   </details>
-  <ol class="build" style="counter-reset:b 10">
-    <li><div><b>Uso diário (versões 5 e 6)</b><p>Envio em um toque, atalho na barra, dicionário de sinônimos, figurinhas vazias de enchimento e ícone próprio.</p></div></li>
-    <li><div><b>Visual novo (versões 7 e 8)</b><p>Interface em Jetpack Compose com cores do ícone, configuração guiada pra usuário novo e ajustes na engrenagem.</p></div></li>
+  <ol class="build" style="counter-reset:b 12">
     <li><div><b>Seu retorno de 27/11, 11h39</b><p>Problemas apontados e o que foi feito:</p><ul><li>App sumia dos recentes: era uma configuração minha (<code>excludeFromRecents</code>); removida.</li><li>Configuração inicial: páginas com setas e deslize, letras maiores, menos texto, exemplos que trocam sozinhos.</li><li>Histórico com Limpar e sugestões tiradas das suas figurinhas.</li><li>Confirmação automática do Update via acessibilidade.</li><li>Nova tela "Me ajuda a responder" (cole a conversa e escolha o clima).</li></ul></div></li>
     <li><div><b>Busca por sentido com IA</b><p>No build, um modelo de IA multilíngue gera vetores de 40 mil palavras em português (6,8 MB no app). Calibrei com as suas 256: "chefe chato", "estou rico", "festa" e "medo" acham o que fazem sentido mesmo sem palavra em comum. Palavras comuns (hoje, bora) pesam menos.</p><div class="meta"><span class="tool">sentence-transformers</span><span class="file">tools/gerar_vetores.py</span></div></div></li>
     <li><div><b>Testes no emulador</b><p>Cada versão agora roda num emulador Android no GitHub com figurinhas de teste, e 13 prints das telas ficam anexados na versão. Primeira rodada: todas as telas abriram, sem nenhum erro.</p><div class="meta"><span class="tool">android-emulator-runner</span><span class="file">tools/telas.sh</span></div></div></li>
+    <li><div><b>Sincronização e melhorias (versões 13 a 17)</b><p>Você testou a versão 12 e tudo funcionou. Depois disso:</p><ul><li>Sincronização das favoritas pelo WhatsApp Web dentro do app, com descrição das novas no celular (ML Kit). O emulador confirmou que o WhatsApp Web abre no app e mostra o QR, sem a recusa que o navegador do Claude teve.</li><li>Climas (Ironia, Preguiça, Bom dia...) no lugar das sugestões de palavras, como você pediu.</li><li>Fileira "Mais usadas" e registro das buscas sem resultado, só no celular.</li><li>App compactado com R8. A versão 13 não compilou (uma anotação no lugar errado) e foi corrigida na 14.</li><li>O teste no emulador travou ao abrir o WhatsApp Web; ganhou limite de tempo e mais memória.</li></ul><div class="meta"><span class="tool">WebView</span><span class="tool">ML Kit</span><span class="tool">R8</span></div></div></li>
   </ol>
 </section>
 
@@ -362,6 +377,8 @@ flowchart TD
 │  ├─ Vetores.kt        <span># sentido por IA</span>
 │  ├─ StickerProvider.kt <span># entrega os pacotes ao WhatsApp</span>
 │  ├─ AutoConfirma.kt   <span># toca em Update sozinho</span>
+│  ├─ Sync.kt           <span># sincroniza pelo WhatsApp Web</span>
+│  ├─ Descrever.kt      <span># texto e conteúdo no celular</span>
 │  ├─ Updater.kt        <span># atualização pelo GitHub</span>
 │  └─ BuscaTile.kt      <span># atalho na barra</span>
 ├─ app/src/main/assets/sinonimos.json
@@ -376,7 +393,7 @@ flowchart TD
     <div class="panel"><h3>Configuração</h3>
       <dl class="kv"><dt>assinatura.jks</dt><dd>chave fixa, pra cada versão instalar por cima</dd><dt>GITHUB_RUN_NUMBER</dt><dd>vira o número da versão</dd><dt>SEM_MIN / SEM_PESO</dt><dd>calibragem da busca por sentido em <code>Store.kt</code></dd><dt>sinonimos.json</dt><dd>grupos de palavras e rótulos das sugestões</dd></dl></div>
     <div class="panel"><h3>Onde ficam os dados</h3>
-      <dl class="kv"><dt>Celular</dt><dd>figurinhas, <code>indice.json</code>, <code>packs.json</code>, <code>diag.log</code> (150 linhas) dentro do app; somem se desinstalar</dd><dt>Notebook</dt><dd><code>IdeaProjects\figurinhas-busca</code>: <code>dados.zip</code>, <code>indice.json</code>, scripts</dd><dt>GitHub</dt><dd>só o código; nenhuma figurinha</dd></dl></div>
+      <dl class="kv"><dt>Celular</dt><dd>figurinhas, <code>indice.json</code> (com o id de cada uma), <code>packs.json</code>, <code>diag.log</code> (150 linhas), sessão do WhatsApp Web, mais usadas e buscas sem resultado, tudo dentro do app; somem se desinstalar</dd><dt>Notebook</dt><dd><code>IdeaProjects\figurinhas-busca</code>: <code>dados.zip</code>, <code>indice.json</code>, scripts</dd><dt>GitHub</dt><dd>só o código; nenhuma figurinha</dd></dl></div>
   </div>
   <h3>Quando algo der errado</h3>
   <div class="tbl"><table>
@@ -386,6 +403,8 @@ flowchart TD
       <tr><td>Janela Update aparece toda vez</td><td>Confirmação automática desligada ou cortada pelo MIUI</td><td>Ligar em Ajustes; liberar o app na economia de bateria</td></tr>
       <tr><td>Pacote sumiu do WhatsApp</td><td>Tocou em Remove</td><td>Engrenagem → Adicionar pacotes</td></tr>
       <tr><td>Busca sem resultado</td><td>Palavra fora da descrição e do vocabulário</td><td>Tente o que a figurinha mostra ou sente; me mande a busca pra eu ajustar</td></tr>
+      <tr><td>Sincronização trouxe figurinhas repetidas</td><td>Sincronizou antes de importar o <code>ids.zip</code></td><td>Importar o <code>ids.zip</code> e me avisar pra limpar as repetidas</td></tr>
+      <tr><td>"Não achei a aba de favoritas"</td><td>Sessão nova ainda sem favoritas sincronizadas</td><td>Favoritar uma figurinha no celular e sincronizar de novo</td></tr>
       <tr><td>"App não instalado"</td><td>Versão com outra assinatura (só até a v1)</td><td>Desinstalar e instalar de novo</td></tr>
     </tbody>
   </table></div>
@@ -394,8 +413,8 @@ flowchart TD
 <section aria-labelledby="split">
   <h2 id="split">O que é automático e o que fica com você</h2>
   <div class="split">
-    <div class="panel a"><h3>O app faz</h3><ul><li>Busca por texto, sinônimo e sentido</li><li>Sugere figurinha pelo clima da conversa</li><li>Monta e atualiza os pacotes</li><li>Toca em Update (se ligado)</li><li>Volta pro WhatsApp</li><li>Avisa e instala versão nova</li></ul></div>
-    <div class="panel y"><h3>Fica com você</h3><ul><li>Abrir a busca e escolher a figurinha</li><li>Enviar pela aba 🔍</li><li>Confirmar atualização do app (exigência do Android)</li><li>Por enquanto: trazer favoritas novas por arquivo</li></ul></div>
+    <div class="panel a"><h3>O app faz</h3><ul><li>Busca por texto, sinônimo e sentido</li><li>Sugere figurinha pelo clima da conversa</li><li>Monta e atualiza os pacotes</li><li>Toca em Update (se ligado)</li><li>Volta pro WhatsApp</li><li>Avisa e instala versão nova</li><li>Sincroniza favoritas novas e removidas</li><li>Descreve as novas no celular</li></ul></div>
+    <div class="panel y"><h3>Fica com você</h3><ul><li>Abrir a busca e escolher a figurinha</li><li>Enviar pela aba 🔍</li><li>Confirmar atualização do app (exigência do Android)</li><li>Conectar o WhatsApp uma vez (código por número de telefone)</li></ul></div>
   </div>
 </section>
 
@@ -409,18 +428,26 @@ flowchart TD
       <tr><td>T2</td><td>Pacote muda com a busca</td><td>Buscar e mandar</td><td>Pacote 🔍 troca na hora</td><td><span class="pill ok">ok (v3)</span></td></tr>
       <tr><td>T3</td><td>Compartilhar como figurinha</td><td>Compartilhar .webp pro WhatsApp</td><td>Chegar como figurinha</td><td><span class="pill stop">falhou</span></td></tr>
       <tr><td>T4</td><td>Animadas no pacote</td><td>Buscar uma GIF e mandar</td><td>Chega animada</td><td><span class="pill ok">ok</span></td></tr>
-      <tr><td>T5</td><td>App nos recentes</td><td>Sair do app duas vezes</td><td>Continua nos recentes</td><td><span class="pill you">pendente</span></td></tr>
-      <tr><td>T6</td><td>Confirmação automática</td><td>Ligar e mandar uma figurinha</td><td>Update tocado sozinho</td><td><span class="pill you">pendente</span></td></tr>
-      <tr><td>T7</td><td>Atualizar pelo app</td><td>Abrir o app com versão nova publicada</td><td>Faixa aparece e instala</td><td><span class="pill you">pendente</span></td></tr>
+      <tr><td>T5</td><td>App nos recentes</td><td>Sair do app duas vezes</td><td>Continua nos recentes</td><td><span class="pill ok">ok (v12)</span></td></tr>
+      <tr><td>T6</td><td>Confirmação automática</td><td>Ligar e mandar uma figurinha</td><td>Update tocado sozinho</td><td><span class="pill ok">ok (v12)</span></td></tr>
+      <tr><td>T7</td><td>Atualizar pelo app</td><td>Abrir o app com versão nova publicada</td><td>Faixa aparece e instala</td><td><span class="pill ok">ok (v12)</span></td></tr>
       <tr><td>T8</td><td>Telas no emulador</td><td>Automático a cada versão</td><td>13 prints sem erro</td><td><span class="pill ok">ok (v11)</span></td></tr>
-      <tr><td>T9</td><td>Me ajuda a responder</td><td>Colar uma conversa real</td><td>Sugestões que fazem sentido</td><td><span class="pill you">pendente</span></td></tr>
+      <tr><td>T9</td><td>Me ajuda a responder</td><td>Colar uma conversa real</td><td>Sugestões que fazem sentido</td><td><span class="pill ok">ok (v12)</span></td></tr>
+      <tr><td>T10</td><td>WhatsApp Web abre no app</td><td>Tela Conectar no emulador</td><td>Mostra o QR, sem recusar o navegador</td><td><span class="pill ok">ok (v16)</span></td></tr>
+      <tr><td>T11</td><td>Primeira sincronização</td><td>Importar ids.zip, conectar e esperar</td><td>256 já conhecidas, novas descritas, nada repetido</td><td><span class="pill you">pendente</span></td></tr>
+      <tr><td>T12</td><td>Favoritar e desfavoritar</td><td>Mudar favoritas no celular e sincronizar</td><td>Nova aparece na busca, removida some</td><td><span class="pill you">pendente</span></td></tr>
     </tbody>
   </table></div>
 </section>
 
 <section aria-labelledby="avaliacao">
   <h2 id="avaliacao">Avaliação crítica</h2>
-  <p class="sub">Uma leitura honesta de onde o projeto está, do que esperar e do que pode estar passando despercebido. Feita em 27/11, às 12h00. Vamos revisar e discutir juntos depois dos testes T5 a T9 no seu celular.</p>
+  <p class="sub">Uma leitura honesta de onde o projeto está, do que esperar e do que pode estar passando despercebido. Feita em 27/11, às 12h00, e revisada às 15h10. Vamos revisar e discutir juntos depois da primeira sincronização (T11 e T12).</p>
+  <div class="panel" style="margin-bottom:16px"><h3>Atualização de 27/11, 15h10: o que o dia mostrou</h3>
+    <p><b>Os testes no celular passaram.</b> Recentes, confirmação automática, atualizar pelo app e sugestão por conversa funcionaram na versão 12.</p>
+    <p><b>O ponto frágil mudou de lugar.</b> Agora é a sincronização: ela depende do WhatsApp Web dentro do app e de detalhes da página que o WhatsApp pode trocar sem aviso. O emulador já mostrou que a página abre; falta a primeira rodada com a sua conta.</p>
+    <p><b>Descrição das novas é mais simples que a minha.</b> O celular lê o texto e reconhece objetos e bichos, mas não entende piada nem contexto. A busca por sentido e os climas compensam parte disso.</p>
+  </div>
   <div class="docs">
     <div class="panel"><h3>Como estamos</h3>
       <p><b>O núcleo funciona de verdade, com as suas figurinhas reais.</b> Busca, pacotes e animadas foram testados no seu celular em 27/11. A busca por sentido e a tela de sugestão foram calibradas com as suas 256, mas só no meu lado.</p>
@@ -438,15 +465,15 @@ flowchart TD
   <div class="tbl"><table>
     <thead><tr><th>Ponto</th><th>Por que importa</th><th>O que sugiro</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>1. Sincronização das favoritas</td><td>Sem ela o app envelhece a cada figurinha nova e não serve pra outra pessoa</td><td>Próxima fase: WhatsApp Web escondido no app + leitura de texto e etiquetas no próprio celular</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>1. Sincronização das favoritas</td><td>Sem ela o app envelhece a cada figurinha nova e não serve pra outra pessoa</td><td>Construída na versão 14: WhatsApp Web no app + ML Kit no celular. Falta o teste real</td><td><span class="pill ok">feito</span></td></tr>
       <tr><td>2. Dependência de comportamento do WhatsApp</td><td>Recarregar pacote e janela Update não são documentados</td><td>Manter o Diagnóstico e o teste T2 depois de cada atualização grande do WhatsApp</td><td><span class="pill ok">decidido</span></td></tr>
       <tr><td>3. Acessibilidade</td><td>Permissão forte; o MIUI pode desligar; Android avisa como "restrita"</td><td>Deixar opcional e restrita ao WhatsApp, nos segundos depois do envio (já é assim)</td><td><span class="pill ok">feito</span></td></tr>
-      <tr><td>4. Automação do WhatsApp Web</td><td>Zona cinzenta nos termos do WhatsApp, mesmo só lendo</td><td>Só leitura, sob demanda, nunca enviar nada pelo Web</td><td><span class="pill you">a discutir</span></td></tr>
-      <tr><td>5. Repositório público com a chave</td><td>Alguém poderia assinar um APK "atualizado"</td><td>Mover a chave pra um segredo do GitHub</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>4. Automação do WhatsApp Web</td><td>Zona cinzenta nos termos do WhatsApp, mesmo só lendo</td><td>Só leitura, no máximo a cada 6 horas, nunca envia nada pelo Web</td><td><span class="pill ok">decidido</span></td></tr>
+      <tr><td>5. Repositório público com a chave</td><td>Alguém poderia assinar um APK "atualizado"</td><td>Mover agora não adianta: a chave já ficou no histórico. Trocar exigiria desinstalar e perder os dados. Aceito, porque o app só instala o que vem das suas versões</td><td><span class="pill stop">descartado</span></td></tr>
       <tr><td>6. Dados de outra pessoa</td><td>O incidente com o Chrome da Gi</td><td>Confirmar o navegador antes de qualquer ação; ela foi avisada por você</td><td><span class="pill ok">decidido</span></td></tr>
-      <tr><td>7. Figurinhas passaram pela IA</td><td>Algumas têm fotos de pessoas</td><td>Nas próximas, descrever no próprio celular, sem mandar imagem pra fora</td><td><span class="pill you">a discutir</span></td></tr>
-      <tr><td>8. O que não é medido</td><td>Não sei quais buscas falham</td><td>Registrar no Diagnóstico as buscas sem resultado (só no celular)</td><td><span class="pill you">a discutir</span></td></tr>
-      <tr><td>9. Tamanho do app</td><td>~27 MB, sem compactação</td><td>Ligar o R8 depois que tudo estabilizar</td><td><span class="pill you">a discutir</span></td></tr>
+      <tr><td>7. Figurinhas passaram pela IA</td><td>Algumas têm fotos de pessoas</td><td>As novas já são descritas no celular, sem sair do aparelho</td><td><span class="pill ok">feito</span></td></tr>
+      <tr><td>8. O que não é medido</td><td>Não sei quais buscas falham</td><td>Ajustes → Buscas sem resultado (só no celular)</td><td><span class="pill ok">feito</span></td></tr>
+      <tr><td>9. Tamanho do app</td><td>ML Kit e vetores pesam</td><td>R8 ligado na versão 13</td><td><span class="pill ok">feito</span></td></tr>
     </tbody>
   </table></div>
 </section>
@@ -457,9 +484,11 @@ flowchart TD
     <li class="done"><span class="ic">✓</span><div><b>Busca, pacotes e animadas funcionando</b><br><span>testado no seu celular em 27/11</span></div></li>
     <li class="done"><span class="ic">✓</span><div><b>Configuração guiada, histórico, sugestões e "Me ajuda a responder"</b><br><span>conferidos nos prints do emulador</span></div></li>
     <li class="done"><span class="ic">✓</span><div><b>Busca por sentido com IA</b><br><span>calibrada com as suas 256 favoritas</span></div></li>
-    <li class="todo"><span class="ic"></span><div><b>Você testar T5 a T9</b><br><span>recentes, confirmação automática, atualizar pelo app, sugestão com conversa real</span></div></li>
-    <li class="todo"><span class="ic"></span><div><b>Revisar esta avaliação juntos</b><br><span>depois dos testes</span></div></li>
-    <li class="todo"><span class="ic"></span><div><b>Fase 3: sincronização sozinha</b><br><span>começa depois dos testes; precisa do seu número pra conectar o WhatsApp Web dentro do app</span></div></li>
+    <li class="done"><span class="ic">✓</span><div><b>Testes T5 a T9 no celular</b><br><span>todos ok na versão 12</span></div></li>
+    <li class="done"><span class="ic">✓</span><div><b>Sincronização, climas, mais usadas, buscas sem resultado, app compactado</b><br><span>versão 17; WhatsApp Web abre no app (emulador)</span></div></li>
+    <li class="todo"><span class="ic"></span><div><b>Importar ids.zip e conectar o WhatsApp (T11)</b><br><span>o ids.zip faz o app reconhecer as 256 que já tem, sem repetir</span></div></li>
+    <li class="todo"><span class="ic"></span><div><b>Favoritar e desfavoritar pra testar (T12)</b><br><span>depois da primeira sincronização</span></div></li>
+    <li class="todo"><span class="ic"></span><div><b>Revisar esta avaliação juntos</b><br><span>depois de T11 e T12</span></div></li>
   </ul>
 </section>
 
@@ -469,11 +498,13 @@ flowchart TD
   <div class="tbl"><table>
     <thead><tr><th>Ideia</th><th>Por quê</th><th>Esforço</th></tr></thead>
     <tbody>
-      <tr><td>Sincronização das favoritas</td><td>Figurinha nova ou apagada aparece no app sozinha</td><td><span class="pill you">grande</span></td></tr>
-      <tr><td>Descrever figurinhas no celular</td><td>Usuário novo sem depender de mim; imagens não saem do celular</td><td><span class="pill you">médio</span></td></tr>
-      <tr><td>Registrar buscas sem resultado</td><td>Saber o que melhorar no dicionário</td><td><span class="pill ok">pequeno</span></td></tr>
-      <tr><td>Chave de assinatura em segredo</td><td>Fecha o risco do repositório público</td><td><span class="pill ok">pequeno</span></td></tr>
-      <tr><td>Compactar o app (R8)</td><td>Download e atualização mais leves</td><td><span class="pill ok">pequeno</span></td></tr>
+      <tr><td>Descrição melhor das novas com IA de imagem (opcional, com sua chave)</td><td>ML Kit não entende piada nem contexto</td><td><span class="pill you">médio</span></td></tr>
+      <tr><td>Editar a descrição de uma figurinha no app</td><td>Corrigir na hora quando a busca errar</td><td><span class="pill you">pequeno</span></td></tr>
+      <tr><td>Sincronização das favoritas</td><td>Figurinha nova ou apagada aparece no app sozinha</td><td><span class="pill ok">feito</span></td></tr>
+      <tr><td>Descrever figurinhas no celular</td><td>Usuário novo sem depender de mim; imagens não saem do celular</td><td><span class="pill ok">feito</span></td></tr>
+      <tr><td>Registrar buscas sem resultado</td><td>Saber o que melhorar no dicionário</td><td><span class="pill ok">feito</span></td></tr>
+      <tr><td>Chave de assinatura em segredo</td><td>Fecha o risco do repositório público</td><td><span class="pill stop">descartado</span></td></tr>
+      <tr><td>Compactar o app (R8)</td><td>Download e atualização mais leves</td><td><span class="pill ok">feito</span></td></tr>
     </tbody>
   </table></div>
 </section>
