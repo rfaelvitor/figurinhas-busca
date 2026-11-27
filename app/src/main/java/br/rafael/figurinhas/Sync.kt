@@ -35,6 +35,24 @@ class Sync(private val a: Activity) {
     private var conhecidos: Set<String> = emptySet()
     private var falhas = 0
     private var modo = ""
+    @Volatile private var ultimoSinal = 0L
+    @Volatile private var ultimoPasso = ""
+    private val vigia = android.os.Handler(android.os.Looper.getMainLooper())
+    private val checar = object : Runnable {
+        override fun run() {
+            if (estado.value != Estado.Sincronizando) return
+            if (System.currentTimeMillis() - ultimoSinal > 150_000) {
+                Store.log(a, "sync: travou em '$ultimoPasso'")
+                estado.value = Estado.Erro
+                mensagem.value = "A sincronização travou ($ultimoPasso). Toque em tentar de novo."
+                modo = ""
+                aoTerminar?.invoke()
+                return
+            }
+            vigia.postDelayed(this, 15_000)
+        }
+    }
+    private fun sinal(passo: String? = null) { ultimoSinal = System.currentTimeMillis(); if (passo != null) ultimoPasso = passo }
 
     val web: WebView by lazy { criarWeb() }
 
@@ -87,6 +105,7 @@ class Sync(private val a: Activity) {
         mensagem.value = "Abrindo o WhatsApp Web…"
         modo = "sincronizar"
         Store.log(a, "sync: comecou")
+        sinal("abrindo o WhatsApp Web"); vigia.removeCallbacks(checar); vigia.postDelayed(checar, 15_000)
         web.loadUrl("https://web.whatsapp.com/send?phone=$num")
     }
 
@@ -100,7 +119,7 @@ class Sync(private val a: Activity) {
     }
 
     inner class Ponte {
-        @JavascriptInterface fun log(m: String) = Store.log(a, "sync: $m")
+        @JavascriptInterface fun log(m: String) { sinal(m); Store.log(a, "sync: $m") }
         @JavascriptInterface fun conectou(jid: String) {
             // jid vem tipo 554797048612:12@c.us
             val num = jid.trim('"').substringBefore(':').substringBefore('@').filter { it.isDigit() }
@@ -119,12 +138,13 @@ class Sync(private val a: Activity) {
                 aoTerminar?.invoke()
             }
         }
-        @JavascriptInterface fun mensagem(m: String) { a.runOnUiThread { mensagem.value = m } }
+        @JavascriptInterface fun mensagem(m: String) { sinal(m); Store.log(a, "sync: $m"); a.runOnUiThread { mensagem.value = m } }
         @JavascriptInterface fun total(n: Int) { a.runOnUiThread { total.intValue = n } }
         @JavascriptInterface fun conhece(h: String): Boolean = h in conhecidos
-        @JavascriptInterface fun existe(h: String) { a.runOnUiThread { feitas.intValue++ } }
-        @JavascriptInterface fun falhou() { falhas++; a.runOnUiThread { feitas.intValue++ } }
+        @JavascriptInterface fun existe(h: String) { sinal(); a.runOnUiThread { feitas.intValue++ } }
+        @JavascriptInterface fun falhou() { sinal(); falhas++; a.runOnUiThread { feitas.intValue++ } }
         @JavascriptInterface fun nova(h: String, b64: String) {
+            sinal()
             File(pasta, "$h.webp").writeBytes(Base64.decode(b64, Base64.DEFAULT))
             a.runOnUiThread { feitas.intValue++; novas.intValue++ }
         }
@@ -233,6 +253,7 @@ class Sync(private val a: Activity) {
   function porRotulo(re, raiz){ return Array.prototype.slice.call((raiz||document).querySelectorAll('[aria-label]')).find(function(e){ return re.test(e.getAttribute('aria-label')); }); }
   try {
     A.mensagem('Entrando no WhatsApp Web…');
+    A.log('esperando a conversa abrir');
     var rodape = await esperar(function(){ return document.querySelector('footer'); }, 90000);
     if (!rodape) {
       if (document.querySelector('canvas') || !document.querySelector('#pane-side')) { A.estado('desconectado'); return; }
@@ -241,11 +262,17 @@ class Sync(private val a: Activity) {
     A.mensagem('Abrindo suas favoritas…');
     var emoji = await esperar(function(){ return porRotulo(/emoji/i, rodape); }, 20000);
     if (!emoji) { A.estado('sem_botao_emoji'); return; }
-    emoji.click(); await dormir(1500);
-    var aba = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('[role="tab"]')).find(function(e){ return /sticker|figurinha|pegatina/i.test((e.getAttribute('aria-label')||'') + e.textContent); }); }, 20000);
-    if (!aba) { A.estado('sem_aba_figurinhas'); return; }
-    aba.click(); await dormir(2500);
-    var fav = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('button[aria-label]')).find(function(e){ return /^(favorite|favorites|favorita|favoritas|favorito|favoritos)$/i.test(e.getAttribute('aria-label').trim()); }); }, 20000);
+    // aparelho recem conectado pode demorar pra receber a lista de favoritas: tenta algumas vezes
+    var fav = null;
+    for (var tent = 0; tent < 5 && !fav; tent++) {
+      if (tent > 0) { A.mensagem('Esperando o WhatsApp mandar suas favoritas… (' + (tent + 1) + '/5)'); emoji.click(); await dormir(4000); }
+      emoji.click(); await dormir(1500);
+      var aba = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('[role="tab"]')).find(function(e){ return /sticker|figurinha|pegatina/i.test((e.getAttribute('aria-label')||'') + e.textContent); }); }, 20000);
+      if (!aba) { A.estado('sem_aba_figurinhas'); return; }
+      aba.click(); await dormir(2500);
+      A.log('procurando favoritas, tentativa ' + (tent + 1));
+      fav = await esperar(function(){ return Array.prototype.slice.call(document.querySelectorAll('button[aria-label]')).find(function(e){ return /^(favorite|favorites|favorita|favoritas|favorito|favoritos)$/i.test(e.getAttribute('aria-label').trim()); }); }, 15000);
+    }
     if (!fav) { A.estado('sem_favoritas'); return; }
     fav.click(); await dormir(3000);
     var itens = function(){ return Array.prototype.slice.call(document.querySelectorAll('[data-testid="sticker-item"]')); };
@@ -258,7 +285,7 @@ class Sync(private val a: Activity) {
       var it = lista[i];
       it.scrollIntoView({block: 'center'});
       var img = await esperar(function(){ var x = it.querySelector('img'); return (x && x.complete && x.naturalWidth > 0 && x.src.indexOf('blob:') === 0) ? x : null; }, 8000);
-      if (!img){ A.falhou(); continue; }
+      if (!img){ A.log('figurinha ' + (i + 1) + ' nao carregou'); A.falhou(); continue; }
       var b = await (await fetch(img.src)).blob();
       var u8 = new Uint8Array(await b.arrayBuffer());
       var dg = new Uint8Array(await crypto.subtle.digest('SHA-256', u8));

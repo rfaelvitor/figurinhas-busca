@@ -138,13 +138,21 @@ class MainActivity : ComponentActivity() {
         .primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString() ?: ""
 
     // salva a busca nos pacotes, pede pro whatsapp recarregar e volta pro chat
-    fun enviar(q: String, resultado: List<Fig>, primeira: Fig?) {
-        if (resultado.isEmpty() || enviando.value) return
-        val res = if (primeira == null) resultado else listOf(primeira) + resultado.filter { it.n != primeira.n }
+    val enviandoFig = mutableStateOf<Fig?>(null)
+
+    fun enviar(q: String, resultado: List<Fig>, primeira: Fig?, conversa: Boolean = false) {
+        if (enviando.value) return
+        if (resultado.isEmpty() && primeira == null && q.isBlank()) return
         primeira?.let { Prefs.registrarUso(this, it.arquivo) }
         enviando.value = true
-        Prefs.guardarBusca(this, q); recentes.value = Prefs.recentes(this)
+        enviandoFig.value = primeira ?: resultado.firstOrNull()
+        if (!conversa) { Prefs.guardarBusca(this, q); recentes.value = Prefs.recentes(this) }
         io.execute {
+            // refaz a busca na hora: se o enter vier antes da tela atualizar, nao manda o resultado antigo
+            val base = if (!conversa && q.isNotBlank()) Store.buscar(this, q) else resultado
+            val res = if (primeira == null) base else listOf(primeira) + base.filter { it.n != primeira.n }
+            if (res.isEmpty()) { runOnUiThread { enviando.value = false; enviandoFig.value = null; aviso.value = "Nada encontrado com \"$q\"." }; return@execute }
+            if (enviandoFig.value == null) runOnUiThread { enviandoFig.value = res.first() }
             val mudou = Store.preencherPacotes(this, res)
             runOnUiThread {
                 fila.clear(); fila += mudou
@@ -166,6 +174,7 @@ class MainActivity : ComponentActivity() {
         val p = fila.removeFirstOrNull()
         if (p == null) {
             enviando.value = false
+            enviandoFig.value = null
             pacotesOk.value = Prefs.pacoteNoWhatsApp(this, Store.PACK_EST) && Prefs.pacoteNoWhatsApp(this, Store.PACK_ANIM)
             aoTerminar?.invoke(); aoTerminar = null
             if (voltarDepois) voltarProWhatsApp()
