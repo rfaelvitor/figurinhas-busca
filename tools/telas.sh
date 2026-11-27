@@ -15,14 +15,14 @@ abrir() { timeout 40 adb shell am start -S -W -n $A "$@"; }
 abrir --es demo_importar demo.zip --es demo_tela configurar --ei demo_passo 0; foto 01_ola 4
 for p in 1 2 3 4; do abrir --es demo_tela configurar --ei demo_passo $p; foto 0$((p+1))_passo$p 3; done
 abrir --es demo_tela busca --es demo_recentes bom_dia,pix,gato; foto 06_busca_inicio 4
-abrir --es demo_tela busca --es demo_q gato_comendo; foto 07_busca_gato_comendo 4
+abrir --es demo_tela busca --es demo_q gato_comendo; foto 07_busca_gato_comendo 8
 abrir --es demo_tela busca --es demo_q to_cansado; foto 08_busca_cansado 4
 abrir --es demo_tela busca --es demo_q xyzqw; foto 09_sem_resultado 4
 abrir --es demo_tela busca --ez demo_ajustes true; foto 10_ajustes 4
 timeout 10 adb shell input swipe 540 1900 540 600 300; foto 10b_ajustes_rolado 2
 adb shell cmd uimode night yes
 abrir --es demo_tela configurar --ei demo_passo 0; foto 11_ola_escuro 4
-abrir --es demo_tela busca --es demo_q dinheiro; foto 12_busca_escuro 4
+abrir --es demo_tela busca --es demo_q dinheiro; foto 12_busca_escuro 8
 adb shell cmd uimode night no
 abrir --es demo_tela busca --es demo_sync copiando; foto 16_sync_copiando 4
 abrir --es demo_tela busca --es demo_sync esperando; foto 17_sync_esperando 4

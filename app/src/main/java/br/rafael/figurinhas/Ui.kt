@@ -519,9 +519,12 @@ private fun Busca(a: MainActivity) {
     var ajustes by remember { mutableStateOf(a.demoAjustes) }
     val foco = remember { FocusRequester() }
 
+    // na primeira busca depois de abrir, a ia ainda pode estar carregando: nao mostra "nada" antes da hora
+    var buscou by remember { mutableStateOf("") }
     LaunchedEffect(q, a.total.intValue) {
         delay(60)
         res = withContext(Dispatchers.Default) { a.buscar(q) }
+        buscou = q
         // guarda a busca que nao achou nada (so depois de parar de digitar)
         if (res.isEmpty() && q.trim().length >= 3) { delay(1800); a.registrarSemResultado(q) }
     }
@@ -612,6 +615,11 @@ private fun Busca(a: MainActivity) {
                 }
                 Legenda("Suas ${a.total.intValue} favoritas · toque pra mandar")
                 Grade(res, { a.enviar("", res, it) }, { detalhe = it })
+            }
+            res.isEmpty() && buscou != q -> {
+                Box(Modifier.fillMaxWidth().padding(top = 48.dp), contentAlignment = Alignment.TopCenter) {
+                    CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+                }
             }
             res.isEmpty() -> {
                 Vazio("Nada com \"$q\"", "Tente o que aparece na figurinha ou o clima que você quer passar:")
