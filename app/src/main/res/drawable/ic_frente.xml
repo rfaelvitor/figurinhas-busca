@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.2" android:scaleY="1.2" android:translateX="-2" android:translateY="-2">
+    <!-- figurinha com a ponta descolando -->
+    <path android:fillColor="#FFC83D"
+        android:pathData="M37,31h30a6,6 0,0 1,6 6v19l-19,19h-17a6,6 0,0 1,-6 -6v-32a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#FFE9A8" android:pathData="M73,56l-19,19v-13a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#3A2470" android:pathData="M42,44m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path android:fillColor="#3A2470" android:pathData="M56,44m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path android:strokeColor="#3A2470" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M40,53q9,8 18,0" />
+    <!-- lupa -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5"
+        android:pathData="M68,67m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="6.5" android:strokeLineCap="round"
+        android:pathData="M75.5,74.5L83,82" />
+    </group>
+</vector>
