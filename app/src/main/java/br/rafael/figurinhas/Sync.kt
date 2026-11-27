@@ -50,6 +50,8 @@ class Sync(private val a: Activity) {
             settings.setSupportZoom(true)
             settings.builtInZoomControls = true
             settings.displayZoomControls = false
+            // pagina de computador num celular: comeca afastada pra caber o QR e o link do numero
+            setInitialScale(60)
             // o whatsapp web so abre em navegador de computador
             val chrome = Regex("Chrome/[\\d.]+").find(WebSettings.getDefaultUserAgent(a))?.value ?: "Chrome/126.0.0.0"
             settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) $chrome Safari/537.36"
